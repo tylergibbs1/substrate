@@ -1,22 +1,26 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, Download, Eye, Check, Command, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Download, Eye, Check, Command, AlertTriangle, LayoutGrid, Play } from "lucide-react";
 import { api } from "../lib/api.js";
 import { downloadDeckExport } from "../lib/downloadExport.js";
 import { useEditor } from "../store.js";
-import { Button, Chip, Switch, Tooltip } from "../ui.js";
+import { Button, Chip, Switch, Tooltip, cx } from "../ui.js";
 import type { DeckDetail, ExportFormat } from "@substrate/contracts";
 
-// png is single-file; pdf/pptx currently fall back to an image bundle + notes.md.
-const EXPORT_NOTE: Partial<Record<ExportFormat, string>> = {
-  pdf: "Exports as an image bundle + notes.md — single-file PDF packaging is a follow-up.",
-  pptx: "Exports as an image bundle + notes.md — single-file PPTX packaging is a follow-up.",
+// pptx is a real single file (prompts in speaker notes); pdf still bundles images.
+const EXPORT_TITLE: Record<ExportFormat, string> = {
+  png: "Export each slide as a PNG + notes.md",
+  pdf: "Image bundle + notes.md (single-file PDF is a follow-up)",
+  pptx: "Real .pptx — each slide image, with its prompt in the speaker notes",
 };
 
 export function TopBar({ detail }: { detail: DeckDetail }) {
   const qc = useQueryClient();
   const setActiveDeck = useEditor((s) => s.setActiveDeck);
   const togglePalette = useEditor((s) => s.togglePalette);
+  const editorView = useEditor((s) => s.editorView);
+  const setEditorView = useEditor((s) => s.setEditorView);
+  const setPresenting = useEditor((s) => s.setPresenting);
   const [exported, setExported] = useState<{ destination: string; note?: string } | null>(null);
 
   const review = useMutation({
@@ -58,6 +62,32 @@ export function TopBar({ detail }: { detail: DeckDetail }) {
             saved → {exported.destination}
           </span>
         )}
+        <Tooltip label={editorView === "grid" ? "Back to the single slide" : "Overview — every slide at once"}>
+          <button
+            type="button"
+            onClick={() => setEditorView(editorView === "grid" ? "canvas" : "grid")}
+            aria-pressed={editorView === "grid"}
+            className={cx(
+              "grid h-[30px] w-[30px] place-items-center rounded-full border transition-colors",
+              editorView === "grid"
+                ? "border-fg-faint bg-ink-2 text-fg"
+                : "border-line-2 text-fg-faint hover:border-fg-faint hover:bg-ink-2 hover:text-fg",
+            )}
+          >
+            <LayoutGrid size={13} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Present — fullscreen slideshow (Esc to exit)">
+          <button
+            type="button"
+            onClick={() => setPresenting(true)}
+            disabled={detail.slides.length === 0}
+            className="flex items-center gap-1.5 rounded-full border border-line-2 px-2.5 py-1 text-fg-faint transition-colors hover:border-fg-faint hover:bg-ink-2 hover:text-fg disabled:opacity-40"
+          >
+            <Play size={12} />
+            <span className="text-[11px]">Present</span>
+          </button>
+        </Tooltip>
         <Tooltip label="Command palette — jump to a slide or run an action">
           <button type="button"
             onClick={() => togglePalette()}
@@ -83,7 +113,7 @@ export function TopBar({ detail }: { detail: DeckDetail }) {
               key={f}
               onClick={() => doExport.mutate(f)}
               disabled={doExport.isPending}
-              title={EXPORT_NOTE[f] ?? "Export each slide as a PNG + notes.md"}
+              title={EXPORT_TITLE[f]}
               className="px-2.5 py-1.5 text-[11px] uppercase mono tracking-wider text-fg-dim hover:bg-ink-2 hover:text-fg border-l border-line-2 disabled:opacity-40"
             >
               {f}

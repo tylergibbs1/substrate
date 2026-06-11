@@ -10,9 +10,9 @@ import { Button, Chip, Eyebrow, cx } from "../ui.js";
  * In-app settings — everything tweakable without touching env: the OpenAI key
  * (slide rendering), and the deck-building agent's provider, model, and Anthropic
  * key. Saving persists to the server's settings.json and takes effect at once.
- * Shared by the Settings modal and the first-run KeyGate.
+ * Shared by the Settings modal and the contextual KeyPrompt.
  */
-export function ApiKeyForm() {
+export function ApiKeyForm({ onKeySaved }: { onKeySaved?: () => void } = {}) {
   const qc = useQueryClient();
   const [openaiKey, setOpenaiKey] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
@@ -23,9 +23,11 @@ export function ApiKeyForm() {
 
   const save = useMutation({
     mutationFn: (patch: Parameters<typeof api.updateSettings>[0]) => api.updateSettings(patch),
-    onSuccess: (view) => {
+    onSuccess: (view, patch) => {
       qc.setQueryData(["settings"], view);
       qc.invalidateQueries({ queryKey: ["status"] });
+      // The OpenAI key was just set — let a contextual prompt resume its action.
+      if (patch.openaiApiKey && view.hasKey) onKeySaved?.();
     },
   });
 

@@ -215,18 +215,25 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       aspectRatio?: AspectRatio;
       designPresetId?: string;
       designPrompt?: string;
-      contextPath?: string;
+      contextPaths?: string[];
+      contextPath?: string; // legacy single-path form
     };
     const description = (body.description ?? "").trim();
     if (!description) return json(res, 400, { error: "description required" });
-    // Optional file context the agent may explore (read-only, sandboxed server-side).
-    // Validate synchronously up front so a bad path fails the request, not silently.
-    const contextPath = typeof body.contextPath === "string" ? body.contextPath.trim() : "";
-    if (contextPath) {
+    // Optional file context (one or more dirs/files) the agent may explore
+    // (read-only, sandboxed server-side). Validate each up front so a bad path
+    // fails the request rather than silently dropping.
+    const rawPaths = Array.isArray(body.contextPaths)
+      ? body.contextPaths
+      : typeof body.contextPath === "string"
+        ? [body.contextPath]
+        : [];
+    const contextPaths = rawPaths.map((p) => (typeof p === "string" ? p.trim() : "")).filter(Boolean);
+    for (const cp of contextPaths) {
       try {
-        fs.statSync(contextPath);
+        fs.statSync(cp);
       } catch {
-        return json(res, 400, { error: "That context path doesn't exist or isn't readable." });
+        return json(res, 400, { error: `That context path doesn't exist or isn't readable: ${cp}` });
       }
     }
     const resolved = await run(Effect.flatMap(Settings, (s) => s.resolve));
@@ -236,6 +243,10 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     if (resolved.agentProvider === "anthropic" && !resolved.anthropicApiKey) {
       return json(res, 400, { error: "Add an Anthropic API key in Settings to build with the agent (Claude), or switch the agent to OpenAI in Settings." });
     }
+    // A user-chosen design (a preset, or a Custom/DESIGN.md prompt) is LOCKED: the
+    // agent builds within it and can't replace it. Leaving Custom blank sends
+    // neither, which is the natural "let the agent design it" path (unlocked).
+    const lockDesign = !!body.designPresetId || !!(typeof body.designPrompt === "string" && body.designPrompt.trim());
     // Create the deck now and return its id immediately; the agent fills it with
     // slides in the background, which the editor shows appearing/rendering live.
     const title = description.split(/\s+/).slice(0, 6).join(" ").slice(0, 60) || "Untitled deck";
@@ -261,7 +272,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     void buildDeckInto({
       deckId,
       description,
-      ...(contextPath ? { contextPath } : {}),
+      lockDesign,
+      ...(contextPaths.length ? { contextPaths } : {}),
       provider: resolved.agentProvider,
       model: resolved.agentModel,
       openaiApiKey: resolved.openaiApiKey,

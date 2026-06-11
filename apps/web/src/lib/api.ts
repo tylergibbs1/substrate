@@ -86,7 +86,7 @@ export const api = {
     aspectRatio?: AspectRatio;
     designPresetId?: string;
     designPrompt?: string;
-    contextPath?: string;
+    contextPaths?: string[];
   }) => req<{ deckId: string }>("/api/decks/build", { method: "POST", body: JSON.stringify(body) }),
 
   // The Assistant: the agent applies a follow-up tweak to an existing deck and

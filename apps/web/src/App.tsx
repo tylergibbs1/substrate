@@ -8,7 +8,7 @@ import { Editor } from "./components/Editor.js";
 import { CommandPalette } from "./components/CommandPalette.js";
 import { ConnectAgent } from "./components/ConnectAgent.js";
 import { Settings } from "./components/Settings.js";
-import { KeyGate } from "./components/KeyGate.js";
+import { KeyPrompt } from "./components/KeyPrompt.js";
 
 export default function App() {
   const activeDeckId = useEditor((s) => s.activeDeckId);
@@ -50,6 +50,22 @@ export default function App() {
   // Surface a connection error gently rather than a blank screen.
   const status = useQuery({ queryKey: ["status"], queryFn: api.status, refetchInterval: 5000 });
 
+  // Demo-first onboarding: a brand-new user (no key set) lands on the seeded demo
+  // deck — a finished, real example — BEFORE being asked for anything. The key is
+  // requested contextually (KeyPrompt) only when they act. Fires once, and never
+  // for a returning user who has a key (they land on the picker as before).
+  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
+  const decks = useQuery({ queryKey: ["decks"], queryFn: api.decks });
+  const demoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (demoOpenedRef.current || settings.data === undefined || decks.data === undefined) return;
+    demoOpenedRef.current = true;
+    if (!settings.data.hasKey && !activeDeckId) {
+      const demo = decks.data.find((d) => d.id === "deck-demo");
+      if (demo) setActiveDeck(demo.id);
+    }
+  }, [settings.data, decks.data, activeDeckId, setActiveDeck]);
+
   return (
     <div className="h-screen w-screen flex flex-col bg-ink-0 text-fg overflow-hidden">
       {status.isError && (
@@ -65,13 +81,13 @@ export default function App() {
           </button>
         </div>
       )}
-      {/* No key → a first-run gate replaces the whole editor until one is saved. */}
-      <KeyGate>
-        {activeDeckId ? <Editor deckId={activeDeckId} /> : <DeckPicker />}
-        <CommandPalette />
-        <ConnectAgent />
-      </KeyGate>
+      {/* No hard gate: the app is browsable immediately (the demo deck opens for
+          new users); the OpenAI key is asked for in context, when an action needs it. */}
+      {activeDeckId ? <Editor deckId={activeDeckId} /> : <DeckPicker />}
+      <CommandPalette />
+      <ConnectAgent />
       <Settings />
+      <KeyPrompt />
     </div>
   );
 }

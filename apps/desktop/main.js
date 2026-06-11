@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { app, BrowserWindow, nativeImage, ipcMain, dialog } from "electron";
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -74,10 +75,41 @@ app.whenReady().then(async () => {
   ipcMain.handle("substrate:pickPath", async () => {
     const win = BrowserWindow.getFocusedWindow();
     const result = await dialog.showOpenDialog(win ?? undefined, {
-      properties: ["openFile", "openDirectory"],
-      message: "Choose a folder or file for the agent to read as context",
+      properties: ["openFile", "openDirectory", "multiSelections"],
+      message: "Choose folders or files for the agent to read as context",
     });
-    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+    // Return ALL chosen paths (the user can multi-select folders/files at once).
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths;
+  });
+
+  // Native export: Electron's renderer has no File System Access write picker, so
+  // the web export path silently fails here. Ask for a destination folder and
+  // write the bundle with Node fs (honoring "always ask where to download").
+  ipcMain.handle("substrate:saveExport", async (_e, payload) => {
+    const win = BrowserWindow.getFocusedWindow();
+    // A single packaged file (e.g. .pptx) → save it directly with a Save-As dialog.
+    if (payload.files.length === 1) {
+      const file = payload.files[0];
+      const result = await dialog.showSaveDialog(win ?? undefined, {
+        defaultPath: file.name,
+        message: "Save export",
+      });
+      if (result.canceled || !result.filePath) return null;
+      fs.writeFileSync(result.filePath, Buffer.from(file.data));
+      return result.filePath;
+    }
+    // Several files → pick a destination folder and write the bundle into it.
+    const result = await dialog.showOpenDialog(win ?? undefined, {
+      properties: ["openDirectory", "createDirectory"],
+      message: `Choose where to save "${payload.suggestedName}"`,
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    const dest = path.join(result.filePaths[0], payload.suggestedName);
+    fs.mkdirSync(dest, { recursive: true });
+    for (const file of payload.files) {
+      fs.writeFileSync(path.join(dest, file.name), Buffer.from(file.data));
+    }
+    return dest;
   });
 
   startServer();

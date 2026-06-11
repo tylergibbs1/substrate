@@ -24,6 +24,11 @@ interface EditorState {
   agentRun: { deckId: string } | null;
   /** Live WS link health — false while the socket is down/reconnecting. */
   wsConnected: boolean;
+  /** Editor center view: the single focused slide, or an overview grid of every
+   *  slide (to see the whole deck at once and police cross-slide consistency). */
+  editorView: "canvas" | "grid";
+  /** Fullscreen present/slideshow mode for the active deck. */
+  presenting: boolean;
   quality: Quality;
   showHistory: boolean;
   showDesignEditor: boolean;
@@ -32,9 +37,15 @@ interface EditorState {
   settingsOpen: boolean;
   /** A transient banner message (e.g. an agent build that failed) — dismissible. */
   notice: string | null;
+  /** Contextual key prompt: opened at the moment an action needs the OpenAI key
+   *  (Create/Build/render), with a reason and an optional action to run once a
+   *  key is saved (so the create the user attempted just proceeds). null = closed. */
+  keyPrompt: { reason: string; onSaved?: () => void } | null;
 
   setActiveDeck: (id: string | null) => void;
   setActiveSlide: (id: string | null) => void;
+  setEditorView: (v: "canvas" | "grid") => void;
+  setPresenting: (on: boolean) => void;
   setMcpClients: (n: number) => void;
   setAgentActivity: (a: { deckId: string; agent: string } | null) => void;
   setAgentRun: (run: { deckId: string } | null) => void;
@@ -52,6 +63,7 @@ interface EditorState {
   setConnectOpen: (on: boolean) => void;
   setSettingsOpen: (on: boolean) => void;
   setNotice: (message: string | null) => void;
+  setKeyPrompt: (p: { reason: string; onSaved?: () => void } | null) => void;
 }
 
 export const useEditor = create<EditorState>((set) => ({
@@ -62,6 +74,8 @@ export const useEditor = create<EditorState>((set) => ({
   agentSteps: null,
   agentRun: null,
   wsConnected: true,
+  editorView: "canvas",
+  presenting: false,
   quality: "instant",
   showHistory: false,
   showDesignEditor: false,
@@ -69,9 +83,12 @@ export const useEditor = create<EditorState>((set) => ({
   connectOpen: false,
   settingsOpen: false,
   notice: null,
+  keyPrompt: null,
 
-  setActiveDeck: (id) => set({ activeDeckId: id, activeSlideId: null }),
+  setActiveDeck: (id) => set({ activeDeckId: id, activeSlideId: null, editorView: "canvas", presenting: false }),
   setActiveSlide: (id) => set({ activeSlideId: id, showHistory: false }),
+  setEditorView: (v) => set({ editorView: v }),
+  setPresenting: (on) => set({ presenting: on }),
   setMcpClients: (n) => set({ mcpClients: n }),
   setAgentActivity: (a) => set({ agentActivity: a }),
   setAgentRun: (run) => set({ agentRun: run }),
@@ -93,4 +110,5 @@ export const useEditor = create<EditorState>((set) => ({
   setConnectOpen: (on) => set({ connectOpen: on }),
   setSettingsOpen: (on) => set({ settingsOpen: on }),
   setNotice: (message) => set({ notice: message }),
+  setKeyPrompt: (p) => set({ keyPrompt: p }),
 }));

@@ -11,7 +11,13 @@ import type { AspectRatio } from "@substrate/contracts";
 // In the dev browser it's absent, and we fall back to a typed path.
 declare global {
   interface Window {
-    substrate?: { pickPath?: (opts?: { directory?: boolean }) => Promise<string | null> };
+    substrate?: {
+      pickPath?: (opts?: { directory?: boolean }) => Promise<string[] | string | null>;
+      saveExport?: (payload: {
+        suggestedName: string;
+        files: Array<{ name: string; data: Uint8Array }>;
+      }) => Promise<string | null>;
+    };
   }
 }
 
@@ -24,10 +30,12 @@ export function DeckPicker() {
   const setActiveDeck = useEditor((s) => s.setActiveDeck);
   const setSettingsOpen = useEditor((s) => s.setSettingsOpen);
   const setConnectOpen = useEditor((s) => s.setConnectOpen);
+  const setKeyPrompt = useEditor((s) => s.setKeyPrompt);
 
   const presets = useQuery({ queryKey: ["presets"], queryFn: api.presets });
   const decks = useQuery({ queryKey: ["decks"], queryFn: api.decks });
   const status = useQuery({ queryKey: ["status"], queryFn: api.status });
+  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
 
   const [presetId, setPresetId] = useState("apple");
   const [customStyle, setCustomStyle] = useState("");
@@ -36,15 +44,20 @@ export function DeckPicker() {
   const [topic, setTopic] = useState("");
   const [aspect, setAspect] = useState<AspectRatio>("16:9");
   const [useAgent, setUseAgent] = useState(false);
-  const [contextPath, setContextPath] = useState("");
+  const [contextPaths, setContextPaths] = useState<string[]>([]);
   const [manualContext, setManualContext] = useState(false);
+  const [manualDraft, setManualDraft] = useState("");
 
-  // Native folder/file picker in the desktop shell; typed-path input in the browser.
+  const addPaths = (paths: string[]) =>
+    setContextPaths((prev) => [...prev, ...paths.map((p) => p.trim()).filter((p) => p && !prev.includes(p))]);
+  const removePath = (p: string) => setContextPaths((prev) => prev.filter((x) => x !== p));
+
+  // Native folder/file picker in the desktop shell (multi-select); typed-path in the browser.
   const pickContext = async () => {
     const picker = window.substrate?.pickPath;
     if (picker) {
       const picked = await picker({ directory: true });
-      if (picked) setContextPath(picked);
+      if (picked) addPaths(Array.isArray(picked) ? picked : [picked]);
     } else {
       setManualContext(true);
     }
@@ -89,7 +102,7 @@ export function DeckPicker() {
         aspectRatio: aspect,
         ...(isCustom || isDesignMd ? {} : { designPresetId: presetId }),
         ...(designPrompt ? { designPrompt } : {}),
-        ...(contextPath.trim() ? { contextPath: contextPath.trim() } : {}),
+        ...(contextPaths.length ? { contextPaths } : {}),
       });
     },
     onSuccess: ({ deckId }) => {
@@ -169,33 +182,61 @@ export function DeckPicker() {
                   />
                   {/* Optional file context — point the agent at a folder or file so it
                       grounds the deck in your real material (read-only, sandboxed). */}
-                  <div className="px-4 pb-2.5">
+                  <div className="px-4 pb-2.5 space-y-1.5">
+                    {/* One chip per attached folder/file; the agent reads them all. */}
+                    {contextPaths.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {contextPaths.map((p) => (
+                          <span
+                            key={p}
+                            className="inline-flex items-center gap-1.5 max-w-full rounded-full bg-ink-3 border border-line px-2 py-0.5 text-[11px] text-fg-dim"
+                          >
+                            <FolderOpen size={11} className="text-accent shrink-0" />
+                            <span className="mono truncate" title={p}>{p.split("/").pop() || p}</span>
+                            <button type="button" onClick={() => removePath(p)} className="text-fg-faint hover:text-fg shrink-0" aria-label={`Remove ${p}`}>
+                              <X size={11} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     {manualContext ? (
                       <div className="flex items-center gap-1.5">
                         <FolderOpen size={12} className="text-fg-faint shrink-0" />
                         <input
                           autoFocus
-                          value={contextPath}
-                          onChange={(e) => setContextPath(e.target.value)}
-                          placeholder="/path/to/a/folder or a single file"
+                          value={manualDraft}
+                          onChange={(e) => setManualDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && manualDraft.trim()) {
+                              addPaths([manualDraft]);
+                              setManualDraft("");
+                            }
+                            if (e.key === "Escape") {
+                              setManualContext(false);
+                              setManualDraft("");
+                            }
+                          }}
+                          placeholder="/path/to/a/folder or file, then Enter"
                           aria-label="Context path"
-                          className="flex-1 bg-ink-3 border border-line-2 rounded-md px-2 py-1 text-[11px] mono outline-none focus:border-accent"
+                          className="flex-1 bg-ink-3 border border-line rounded-lg px-2 py-1 text-[11px] mono outline-none focus:border-accent"
                         />
-                        <button type="button" onClick={() => { setManualContext(false); setContextPath(""); }} className="text-fg-faint hover:text-fg shrink-0" aria-label="Cancel">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setManualContext(false);
+                            setManualDraft("");
+                          }}
+                          className="text-fg-faint hover:text-fg shrink-0"
+                          aria-label="Done adding paths"
+                        >
                           <X size={12} />
-                        </button>
-                      </div>
-                    ) : contextPath ? (
-                      <div className="inline-flex items-center gap-1.5 max-w-full rounded-md bg-ink-3 border border-line px-2 py-1 text-[11px] text-fg-dim">
-                        <FolderOpen size={12} className="text-accent shrink-0" />
-                        <span className="mono truncate" title={contextPath}>{contextPath}</span>
-                        <button type="button" onClick={() => setContextPath("")} className="text-fg-faint hover:text-fg shrink-0" aria-label="Remove context">
-                          <X size={11} />
                         </button>
                       </div>
                     ) : (
                       <button type="button" onClick={pickContext} className="inline-flex items-center gap-1.5 text-[11px] text-fg-faint hover:text-fg transition-colors">
-                        <FolderOpen size={12} /> Add context — point the agent at a folder or file
+                        <FolderOpen size={12} />{" "}
+                        {contextPaths.length ? "Add another folder or file" : "Add context — point the agent at folders or files"}
                       </button>
                     )}
                   </div>
@@ -241,7 +282,20 @@ export function DeckPicker() {
                 </button>
                 <Button
                   variant="primary"
-                  onClick={() => (useAgent ? build : create).mutate()}
+                  onClick={() => {
+                    const go = () => (useAgent ? build : create).mutate();
+                    // No key yet → ask in context, then resume this exact action.
+                    if (settings.data && !settings.data.hasKey) {
+                      setKeyPrompt({
+                        reason: useAgent
+                          ? "Substrate renders every slide with GPT Image 2. Add your OpenAI key and the agent starts building this deck."
+                          : "Substrate renders every slide with GPT Image 2. Add your OpenAI key to create this deck.",
+                        onSaved: go,
+                      });
+                    } else {
+                      go();
+                    }
+                  }}
                   disabled={create.isPending || build.isPending || (useAgent && !topic.trim()) || (isDesignMd && !mdSlug)}
                   title={useAgent ? "An agent designs and writes every slide from your description" : "Create a blank deck and build the slides yourself"}
                   className="min-w-[148px] justify-center"

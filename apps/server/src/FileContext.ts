@@ -57,11 +57,15 @@ const BINARY_EXTS = new Set([
 ]);
 
 export interface FileContext {
-  /** The sandbox root (a directory). */
+  /** The base tools resolve against: a single attached dir, or a workspace of
+   *  named symlinks when several dirs/files were attached. */
   readonly root: string;
-  /** When the user picked a single file, its absolute path; else null. */
+  /** Human description of what's attached, for the agent prompt (e.g. "the folder
+   *  meridian-main" or "3 attached folders: a/, b/, c/"). */
+  readonly label: string;
+  /** When the user attached a single file, its absolute path; else null. */
   readonly focusFile: string | null;
-  /** The picked file relative to the root (for the agent prompt); else null. */
+  /** The single attached file relative to the root (for the prompt); else null. */
   readonly focusRel: string | null;
   readFile(input: string, offset?: number, limit?: number): Promise<string>;
   listDir(input?: string): Promise<string>;
@@ -73,18 +77,58 @@ export interface FileContext {
   run(command: string, timeoutMs?: number): Promise<string>;
 }
 
-/** Open a read-only file context rooted at a user-chosen directory or file. */
-export function openFileContext(input: string): FileContext {
-  const real = fs.realpathSync(input); // canonicalize once; throws if missing
-  const isDir = fs.statSync(real).isDirectory();
-  const root = isDir ? real : path.dirname(real);
-  const focusFile = isDir ? null : real;
+/**
+ * Open a sandboxed file context over one or more user-chosen directories/files.
+ * - One directory  → rooted at it.
+ * - One file       → confined to just that file.
+ * - Several inputs → a workspace of named symlinks; each is addressed as
+ *   "<name>/..." (the basename, de-duplicated), and ALL paths are confined to the
+ *   union of the chosen inputs.
+ */
+export function openFileContext(inputs: string[]): FileContext {
+  const reals = inputs.map((i) => fs.realpathSync(i)); // canonicalize; throws if missing
+  if (reals.length === 0) throw new Error("No file-context paths provided.");
+  // The containment set: a real path is in-bounds iff it's under one of these.
+  const roots = reals.slice();
 
-  // `run` needs a working directory. For a directory attachment that's the root.
-  // For a SINGLE-file attachment the read tools lock to the one file, so we keep
-  // run consistent: its cwd is a throwaway dir holding only a symlink to that
-  // file, so a bare `ls` or relative path sees just the attached file (the shell
-  // is still unconfined for absolute paths — the user's accepted choice).
+  const single = reals.length === 1 ? reals[0]! : null;
+  const singleIsDir = single ? fs.statSync(single).isDirectory() : false;
+
+  let root: string;
+  let focusFile: string | null = null;
+  let label: string;
+  if (single && !singleIsDir) {
+    root = path.dirname(single);
+    focusFile = single;
+    label = `the file ${path.basename(single)}`;
+  } else if (single) {
+    root = single;
+    label = `the folder ${path.basename(single)}`;
+  } else {
+    // Several inputs: a workspace of named symlinks, addressed as "<name>/...".
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "substrate-ctx-"));
+    const used = new Map<string, number>();
+    const names: string[] = [];
+    for (const r of reals) {
+      const base = path.basename(r) || "root";
+      const n = used.get(base) ?? 0;
+      used.set(base, n + 1);
+      const name = n > 0 ? `${base}-${n + 1}` : base;
+      try {
+        fs.symlinkSync(r, path.join(ws, name));
+        names.push(name);
+      } catch {
+        /* unlinkable input is skipped, not fatal */
+      }
+    }
+    root = fs.realpathSync(ws); // canonicalize (e.g. macOS /var → /private/var)
+    label = `${reals.length} attached folders: ${names.map((n) => `${n}/`).join(", ")}`;
+  }
+
+  // `run` needs a real working directory: the root (a dir or the workspace). For a
+  // single file, a throwaway dir holding only a symlink to that file, so a bare
+  // `ls`/relative path sees just it (the shell is still unconfined for absolute
+  // paths — the user's accepted choice).
   let runCwd = root;
   if (focusFile) {
     try {
@@ -96,22 +140,29 @@ export function openFileContext(input: string): FileContext {
     }
   }
 
-  // Resolve a (possibly relative) path against the root and reject any escape —
-  // via `..`, an absolute path outside root, or a symlink pointing out.
+  const isUnderOrEq = (base: string, p: string): boolean => {
+    const r = path.relative(base, p);
+    return r === "" || (r !== ".." && !r.startsWith(".." + path.sep) && !path.isAbsolute(r));
+  };
+  // In-bounds iff the REAL path is the/under the root (workspace-local) or under
+  // any attached input (the symlink targets / each chosen folder).
+  const insideRoots = (real: string): boolean =>
+    isUnderOrEq(root, real) || roots.some((r) => isUnderOrEq(r, real));
+
+  // Resolve a (possibly relative, possibly "<name>/...") path. Realpath ONLY for
+  // the containment check (catches `..` and symlinks pointing out); return the
+  // lexical path so fs ops follow the workspace symlinks and display stays clean.
   const resolveInRoot = (p: string): string => {
     const abs = path.resolve(root, p);
-    let resolved: string;
+    let real: string;
     try {
-      resolved = fs.realpathSync(abs);
+      real = fs.realpathSync(abs);
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === "ENOENT") resolved = abs;
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") real = abs;
       else throw e;
     }
-    const rel = path.relative(root, resolved);
-    if (rel !== "" && (rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel))) {
-      throw new Error("Path escapes the file-context root and was refused.");
-    }
-    return resolved;
+    if (!insideRoots(real)) throw new Error("Path escapes the attached file context and was refused.");
+    return abs;
   };
 
   const rel = (abs: string): string => path.relative(root, abs) || ".";
@@ -150,9 +201,29 @@ export function openFileContext(input: string): FileContext {
       for (const entry of entries) {
         if (++seen > WALK_MAX_ENTRIES) return;
         const full = path.join(current, entry.name);
-        if (entry.isDirectory()) {
+        let isDir = entry.isDirectory();
+        let isFile = entry.isFile();
+        if (entry.isSymbolicLink()) {
+          // Follow only symlinks whose target stays inside the attached inputs:
+          // the workspace's named roots do; a stray internal symlink to /etc won't.
+          let real: string;
+          try {
+            real = await fsp.realpath(full);
+          } catch {
+            continue;
+          }
+          if (!insideRoots(real)) continue;
+          try {
+            const st = await fsp.stat(full);
+            isDir = st.isDirectory();
+            isFile = st.isFile();
+          } catch {
+            continue;
+          }
+        }
+        if (isDir) {
           if (!IGNORED_DIRS.has(entry.name)) stack.push(full);
-        } else if (entry.isFile()) {
+        } else if (isFile) {
           yield full;
         }
       }
@@ -198,10 +269,23 @@ export function openFileContext(input: string): FileContext {
     const stat = await fsp.stat(target);
     if (!stat.isDirectory()) return readFile(inputPath);
     const entries = await fsp.readdir(target, { withFileTypes: true });
-    const names = entries
-      .filter((e) => !(e.isDirectory() && IGNORED_DIRS.has(e.name)))
-      .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))
-      .map((e) => (e.isDirectory() ? `${e.name}/` : e.name));
+    // A workspace's top level is symlinks to the attached roots — stat to see dirs.
+    const marked = await Promise.all(
+      entries.map(async (e) => {
+        if (e.isSymbolicLink()) {
+          try {
+            return { name: e.name, dir: (await fsp.stat(path.join(target, e.name))).isDirectory() };
+          } catch {
+            return { name: e.name, dir: false };
+          }
+        }
+        return { name: e.name, dir: e.isDirectory() };
+      }),
+    );
+    const names = marked
+      .filter((e) => !(e.dir && IGNORED_DIRS.has(e.name)))
+      .sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name))
+      .map((e) => (e.dir ? `${e.name}/` : e.name));
     return `${rel(target)}/ (${names.length} entries):\n${names.join("\n")}`;
   };
 
@@ -342,7 +426,7 @@ export function openFileContext(input: string): FileContext {
     });
   };
 
-  return { root, focusFile, focusRel: focusFile ? path.relative(root, focusFile) : null, readFile, listDir, glob, grep, run };
+  return { root, label, focusFile, focusRel: focusFile ? path.relative(root, focusFile) : null, readFile, listDir, glob, grep, run };
 }
 
 /** Minimal glob → RegExp: supports `**` (across dirs), `*` (within a segment),
