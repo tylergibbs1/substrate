@@ -133,6 +133,18 @@ app.whenReady().then(async () => {
   startServer();
   if (!isDev) await waitForServer(process.env.SUBSTRATE_PORT ?? "4321");
   createWindow();
+
+  // Auto-update from the GitHub Release (best-effort). No-ops in dev; on macOS it
+  // requires a signed build (Squirrel.Mac), so it stays quiet until signing lands.
+  if (!isDev) {
+    import("electron-updater")
+      .then((m) => {
+        const autoUpdater = m.autoUpdater ?? m.default?.autoUpdater;
+        return autoUpdater?.checkForUpdatesAndNotify();
+      })
+      .catch(() => {});
+  }
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
