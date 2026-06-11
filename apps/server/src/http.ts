@@ -30,7 +30,7 @@ import { config } from "./Config.ts";
 import { blobExists, blobPath } from "./util.ts";
 import { buildMcpServer } from "./mcp-server.ts";
 import { Decks } from "./Decks.ts";
-import { buildDeckInto, reviseDeck } from "./DeckAgent.ts";
+import { buildDeckInto, reviseDeck, polishDeck } from "./DeckAgent.ts";
 import { resolveDesignSource, designRegistry } from "./DesignImport.ts";
 import { Provider } from "./Provider.ts";
 import { Generation } from "./Generation.ts";
@@ -268,27 +268,52 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     // Bracket the whole run so the feed/working state spans it (not the 4s edge).
     const emitRun = (active: boolean) =>
       void run(Effect.flatMap(Events, (e) => e.publish({ type: "agent-run", deckId, active })));
-    emitRun(true);
-    void buildDeckInto({
-      deckId,
-      description,
-      lockDesign,
-      ...(contextPaths.length ? { contextPaths } : {}),
+    // Wait until every slide reaches a terminal render state (or a timeout), so
+    // the polish pass can actually SEE the renders.
+    const waitForDeckRenders = async (timeoutMs = 120000): Promise<void> => {
+      const terminal = new Set(["done", "error"]);
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const detail = await run(Effect.flatMap(Decks, (d) => d.getDeckDetail(deckId)));
+        if (!detail || detail.slides.length === 0) return;
+        if (detail.slides.every((s) => s.jobStatus != null && terminal.has(s.jobStatus))) return;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    };
+    const agentCfg = {
       provider: resolved.agentProvider,
       model: resolved.agentModel,
       openaiApiKey: resolved.openaiApiKey,
       anthropicApiKey: resolved.anthropicApiKey,
-      onStep: emitStep,
-    })
-      .then((r) => {
-        // Surface a half-built deck instead of leaving the user staring at gaps.
-        if (r.truncated) void buildError("The agent stopped before finishing — the deck may be incomplete. Use the Assistant to continue.");
-      })
-      .catch((e) => {
+    };
+    emitRun(true);
+    void (async () => {
+      try {
+        const r = await buildDeckInto({
+          deckId,
+          description,
+          lockDesign,
+          ...(contextPaths.length ? { contextPaths } : {}),
+          ...agentCfg,
+          onStep: emitStep,
+        });
+        // A half-built deck isn't worth a polish pass — surface it and stop.
+        if (r.truncated) {
+          void buildError("The agent stopped before finishing — the deck may be incomplete. Use the Assistant to continue.");
+          return;
+        }
+        // Close the agent's loop: once the slides have rendered, a vision pass
+        // where the agent SEES each render and fixes the 1-2 worst.
+        emitStep("Rendering the deck", null);
+        await waitForDeckRenders();
+        await polishDeck({ deckId, ...agentCfg, onStep: emitStep });
+      } catch (e) {
         runtime.runFork(Effect.logError(`deck-builder agent failed for ${deckId}`, e));
         void buildError(e instanceof Error ? e.message : "The agent failed to build this deck.");
-      })
-      .finally(() => emitRun(false));
+      } finally {
+        emitRun(false);
+      }
+    })();
     return json(res, 201, { deckId });
   }
 

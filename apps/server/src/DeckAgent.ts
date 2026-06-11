@@ -127,6 +127,9 @@ const BUILD_TOOLS = ["set_deck_title", "set_design_prompt", "list_design_presets
 // When the user explicitly chose a design on the picker, it is LOCKED: the agent
 // reads it (get_deck) and builds within it, with no tool to change the look.
 const BUILD_TOOLS_LOCKED = ["get_deck", "set_deck_title", "add_slide"];
+// Final quality pass: the agent SEES each render (get_slide_render) and fixes the
+// worst — no add/delete/reorder/redesign, just edit/regenerate the bad slides.
+const POLISH_TOOLS = ["get_deck", "get_slide_render", "edit_slide_prompt", "regenerate_slide"];
 const REVISE_TOOLS = [
   "get_deck", "edit_slide_prompt", "add_slide", "delete_slide",
   "regenerate_slide", "reorder_slides", "set_design_prompt", "set_deck_title",
@@ -242,6 +245,7 @@ function describeToolCall(toolName: string, input: unknown): { label: string; de
     case "list_design_presets":
     case "list_design_md": return { label: "Browsed designs", detail: null };
     case "get_deck": return { label: "Read the deck", detail: null };
+    case "get_slide_render": return { label: "Reviewed a render", detail: null };
     case "read_file": return { label: "Read a file", detail: trunc(str(a.path)) };
     case "list_dir": return { label: "Listed files", detail: trunc(str(a.path)) };
     case "glob": return { label: "Searched files", detail: trunc(str(a.pattern)) };
@@ -397,6 +401,60 @@ export async function reviseDeck(
         ? `${result.text}\n\n(Stopped before finishing — ask me to continue.)`
         : result.text;
     return { actions, text };
+  } finally {
+    await mcp.close();
+  }
+}
+
+/**
+ * The polish pass — closes the agent's loop. The build agent is fire-and-forget
+ * and blind; once the slides have rendered, THIS pass lets the agent SEE each
+ * render (get_slide_render returns the real image) and fix only the 1-2 worst.
+ * The difference between "generated a deck" and "delivered a finished deck".
+ */
+const POLISH_INSTRUCTIONS = `<role>
+You are doing the FINAL quality pass on a just-built Substrate deck. For the first time you can SEE the rendered slides — get_slide_render returns the actual image. Each slide is an image rendered from a text PROMPT; the prompt is the only editable artifact.
+</role>
+
+<task>
+Catch and fix the 1-2 WORST rendering failures, nothing more. Image models garble text, duplicate or invent words, misspell, or blow the composition; your job is to find the slides where that happened and fix only those.
+1. get_deck(deck_id) to list every slide id and its prompt.
+2. get_slide_render(slide_id) on EACH slide to SEE the render. Compare the image to that slide's prompt: is the on-slide text spelled correctly and shown exactly once (no duplicated, garbled, or invented words)? Is the headline the one the prompt states? Is there one clear focal point with real negative space? Is it consistent with the other slides' look?
+3. Pick the 1-2 worst. Do NOT touch slides that read cleanly.
+4. Fix only those: edit_slide_prompt to tighten the prompt (shorten the copy, restate "render verbatim, exactly once", spell the exact words letter-by-letter), or regenerate_slide(reseed: true) if the prompt is already good but the render was unlucky.
+</task>
+
+<constraints>
+- Fix AT MOST 2 slides. If every slide reads cleanly, change NOTHING and say so.
+- Don't rewrite slides that are already good; don't redesign the deck or add/remove slides.
+- One tool call at a time. When done, state in ONE line what you fixed (or that the deck was clean).
+- Work only on this deck.
+</constraints>`;
+
+export async function polishDeck(opts: { deckId: string; onStep: StepEmit } & AgentConfig): Promise<void> {
+  const mcp = await connectAgentMcp();
+  try {
+    const tools = scopeTools(await mcp.tools(), opts.deckId, POLISH_TOOLS);
+    await generateText({
+      model: agentModel(opts),
+      messages: [
+        {
+          role: "system",
+          content: POLISH_INSTRUCTIONS,
+          providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+        },
+        { role: "user", content: `deck_id: ${opts.deckId}\n\nDo the final quality pass: view every slide and fix only the 1-2 worst.` },
+      ],
+      tools,
+      onStepFinish: ({ toolCalls }) => {
+        for (const call of toolCalls) {
+          const d = describeToolCall(call.toolName, call.input);
+          if (d) opts.onStep(d.label, d.detail);
+        }
+      },
+      // Room to view every slide (one image each) plus a couple of fixes.
+      stopWhen: stepCountIs(48),
+    });
   } finally {
     await mcp.close();
   }
