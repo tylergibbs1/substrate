@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import { spawn } from "node:child_process";
 
 /**
@@ -16,12 +17,15 @@ import { spawn } from "node:child_process";
  *   escapes. File CONTENTS are untrusted (a prompt-injection surface), so there
  *   is no "ask the human" fallback — out-of-root access simply fails.
  * - `run` is an UNCONFINED shell (the user's explicit choice): a command runs
- *   with the host user's authority, cwd at the root. We mirror opencode's
- *   guardrails — timeout (default 2m, cap 10m), bounded captured output, an
- *   advisory warning when the command names paths outside the root — and also
- *   scrub Substrate's own API keys / MCP token from the child env. It is NOT an
- *   OS sandbox: a malicious file could still steer it, so the build prompt's
- *   data-not-instructions guard is the first line of defense.
+ *   with the host user's authority, cwd at the working dir. We mirror opencode's
+ *   guardrails — timeout (default 2m, cap 10m, group-killed so children die too),
+ *   bounded captured output, and an advisory flagging any path (absolute OR
+ *   relative `..`) the command reaches outside the attached material. We also
+ *   scrub Substrate's API keys / MCP token from the child env — but that is
+ *   defense-in-depth, NOT a boundary: the same secrets persist on disk (settings
+ *   file, sqlite) and a determined injected command runs as the same user and can
+ *   read them. There is NO OS sandbox, so the build prompt's data-not-instructions
+ *   guard is the real first line of defense.
  * - Read caps mirror opencode (50 KB / 2000 lines per read, 100 search hits) so a
  *   huge tree can't blow up the model's context. Binaries and junk dirs skipped.
  */
@@ -63,8 +67,9 @@ export interface FileContext {
   listDir(input?: string): Promise<string>;
   glob(pattern: string, input?: string): Promise<string>;
   grep(pattern: string, input?: string, include?: string): Promise<string>;
-  /** Run a shell command (cwd = root) to analyze/transform the material. Bounded
-   *  output + timeout; unconfined (host-user authority). Never rejects. */
+  /** Run a shell command to analyze/transform the material (cwd = the attached
+   *  dir, or a 1-file scratch dir in single-file mode). Bounded output + group-
+   *  killed timeout; unconfined (host-user authority). Never rejects. */
   run(command: string, timeoutMs?: number): Promise<string>;
 }
 
@@ -74,6 +79,22 @@ export function openFileContext(input: string): FileContext {
   const isDir = fs.statSync(real).isDirectory();
   const root = isDir ? real : path.dirname(real);
   const focusFile = isDir ? null : real;
+
+  // `run` needs a working directory. For a directory attachment that's the root.
+  // For a SINGLE-file attachment the read tools lock to the one file, so we keep
+  // run consistent: its cwd is a throwaway dir holding only a symlink to that
+  // file, so a bare `ls` or relative path sees just the attached file (the shell
+  // is still unconfined for absolute paths — the user's accepted choice).
+  let runCwd = root;
+  if (focusFile) {
+    try {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "substrate-ctx-"));
+      fs.symlinkSync(focusFile, path.join(dir, path.basename(focusFile)));
+      runCwd = dir;
+    } catch {
+      runCwd = path.dirname(focusFile);
+    }
+  }
 
   // Resolve a (possibly relative) path against the root and reject any escape —
   // via `..`, an absolute path outside root, or a symlink pointing out.
@@ -244,16 +265,18 @@ export function openFileContext(input: string): FileContext {
     return `${total} match(es):\n${groups.join("\n\n")}${trunc}`;
   };
 
-  // Absolute paths named in the command that fall outside the root — advisory
+  // Paths the command names that fall OUTSIDE the working directory — advisory
   // only (the shell is unconfined), surfaced so the agent/log notes the reach.
+  // Resolves BOTH absolute paths and relative `../` escapes (the common form, and
+  // how Substrate's own on-disk secrets/data would be reached), against runCwd.
   const externalPaths = (command: string): string[] => {
     const out = new Set<string>();
     const tokens = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
     for (const token of tokens) {
       const value = token.replace(/^(['"])(.*)\1$/, "$2").replace(/[;,|&]+$/, "");
-      if (!path.isAbsolute(value)) continue;
-      const resolved = path.resolve(value);
-      const r = path.relative(root, resolved);
+      if (!value || value.startsWith("-")) continue; // skip flags, not paths
+      const resolved = path.isAbsolute(value) ? path.resolve(value) : path.resolve(runCwd, value);
+      const r = path.relative(runCwd, resolved);
       if (r === ".." || r.startsWith(".." + path.sep) || path.isAbsolute(r)) out.add(resolved);
     }
     return [...out];
@@ -267,7 +290,9 @@ export function openFileContext(input: string): FileContext {
     return new Promise((resolve) => {
       let child: ReturnType<typeof spawn>;
       try {
-        child = spawn("/bin/sh", ["-c", command], { cwd: root, env });
+        // `detached` makes the shell a process-group leader so the timeout can
+        // group-kill it AND all its children (pipelines, python3, &-jobs).
+        child = spawn("/bin/sh", ["-c", command], { cwd: runCwd, env, detached: true });
       } catch (e) {
         resolve(`Failed to start the command: ${e instanceof Error ? e.message : String(e)}`);
         return;
@@ -277,9 +302,16 @@ export function openFileContext(input: string): FileContext {
       let outTrunc = false;
       let errTrunc = false;
       let timedOut = false;
+      const kill = () => {
+        try {
+          if (child.pid) process.kill(-child.pid, "SIGKILL"); // negative pid → whole group
+        } catch {
+          child.kill("SIGKILL");
+        }
+      };
       const timer = setTimeout(() => {
         timedOut = true;
-        child.kill("SIGKILL");
+        kill();
       }, limit);
       timer.unref?.();
       child.stdout?.on("data", (d: Buffer) => {
@@ -301,7 +333,7 @@ export function openFileContext(input: string): FileContext {
         let body = out && err ? `${out}\n\nstderr:\n${err}` : err ? `stderr:\n${err}` : out;
         if (!body) body = "(no output)";
         if (outTrunc || errTrunc) body += `\n[output truncated at ${RUN_MAX_OUTPUT / 1024}KB]`;
-        const warn = external.length ? `\nNote: this command names paths outside the context root: ${external.join(", ")}` : "";
+        const warn = external.length ? `\nNote: this command reaches paths outside the attached material: ${external.join(", ")}` : "";
         const tail = timedOut
           ? `\n\nCommand timed out after ${Math.round(limit / 1000)}s and was killed.`
           : `\n\nExited with code ${code ?? "unknown"}.`;

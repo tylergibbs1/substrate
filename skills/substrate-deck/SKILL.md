@@ -64,7 +64,8 @@ deliverable: `"A single 16:9 presentation slide."` Then:
   topic label ("Support Metrics").
 - **Text is copy, not theme.** Put EVERY on-slide word in literal DOUBLE QUOTES and
   say "render verbatim, exactly once, no extra or invented text". Spell brand names
-  letter-by-letter. Cap copy at ~6 free-standing words.
+  letter-by-letter. Cap copy at ~6 free-standing words. **Never use em dashes or en
+  dashes** in any on-slide text, headline, or title: recast with a period, comma, or colon.
 - **One focal element**, named, with explicit size/weight contrast ("headline ~5x the
   sub-line"). Place it off-center (rule of thirds). Demand active negative space
   ("~40% of the frame empty").

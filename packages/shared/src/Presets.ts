@@ -4,6 +4,11 @@ import type { DesignPreset } from "@substrate/contracts";
  * Built-in design presets (PRD §6.1). Apple-style is first and the default.
  * Each preset is a named main design prompt; framed as a design aesthetic, not a
  * clone of any company's proprietary assets (PRD §14).
+ *
+ * The main design prompt is injected ahead of every slide's prompt, so it sets
+ * the LOOK (palette, type, composition, material) and never on-slide text. These
+ * are research-derived: each names a concrete high-contrast text/background hex
+ * pair, specific typography, and a consistency cue so a whole deck coheres.
  */
 export const DEFAULT_PRESET_ID = "apple";
 
@@ -11,56 +16,33 @@ export const DESIGN_PRESETS: ReadonlyArray<Omit<DesignPreset, "styleRefBlobRef">
   {
     id: "apple",
     name: "Apple-style",
-    description:
-      "Clean, minimal, generous whitespace, crisp typography, restrained color. A design aesthetic, not a brand clone.",
+    description: "Keynote-stage minimalism: charcoal-to-black gradient, vast whitespace, one idea per slide.",
     isDefault: true,
-    designPrompt: [
-      "Design system: a calm, premium keynote aesthetic.",
-      "Extreme minimalism with generous whitespace and a single clear focal point per slide.",
-      "Typography: a crisp neutral grotesque sans-serif (Helvetica Neue / SF Pro feel), tight optical kerning, large confident headlines, restrained body text.",
-      "Color: predominantly white or near-black backgrounds, one restrained accent color used sparingly. High contrast, no gradients unless subtle.",
-      "Layout: strong grid, balanced negative space, content centered or anchored to a clean baseline. Nothing crowded.",
-      "Imagery: photographic or product-render quality, soft realistic shadows, never clip-art. Avoid decorative borders, bevels, or skeuomorphism.",
-      "Overall: quiet confidence. If in doubt, remove an element.",
-    ].join(" "),
+    designPrompt:
+      "Design system: Apple-style keynote minimalism, premium, reductive, photography-first. Palette is two modes sharing one DNA: a stage mode with a charcoal-to-black vertical gradient (#1d1d1f to #000000) carrying faint film grain and a soft central spotlight bloom, plus a light mode of pure white #ffffff and off-white #f5f5f7 with near-black tiles #272729; text is high-contrast near-white #f5f5f7 on dark and ink #1d1d1f on light (never pure black for body), with one single interactive blue #0066cc used sparingly as the only accent and zero second accent color. Typography evokes San Francisco (substitute Inter or Helvetica Neue), using only weights 300, 400, 600, 700 and skipping 500, with light weights at large sizes and negative letter-spacing that tightens progressively on big headlines (the unmistakable tight cadence), body set generous and airy with line-height never below roughly 1.47. Composition follows one idea per slide: a single focal point, either one studio-lit product render or one giant headline or number, floating dead-center in vast negative space on an 8px grid with at least 64px of air above key elements, or the post-2019 asymmetric bento grid of 6 to 9 rounded cards where box size encodes importance and cards separate by value and inner shadow and highlight rather than borders. Material is extreme restraint: borders are near-invisible hairlines, the only shadow is a soft cast under photographic product imagery, decorative gradients and glows and shadows on cards, buttons, or text are forbidden, and the sole sanctioned gradient is the dark stage backdrop; radii stay consistent with 0 for full-bleed imagery and generous rounding on cards. Imagery is impossibly crisp, color-graded, studio-lit product renders on dark or seamless surfaces with no stock photos and no people clutter, hero shots full-bleed and rectangular (never rounded), giant context numbers treated as typography. Hold every slide to this same near-black-or-white canvas, single-blue accent, tight light-weight type, and air-rich one-idea layout so the entire deck reads as one continuous, premium system.",
   },
   {
     id: "editorial",
     name: "Editorial",
-    description: "Magazine-grade layout — serif headlines, strong columns, expressive whitespace.",
+    description: "High-contrast magazine layout: warm paper, near-black ink, one spot accent, oversized Didone headlines.",
     isDefault: false,
-    designPrompt: [
-      "Design system: an editorial, magazine-grade layout.",
-      "Typography: high-contrast serif headlines paired with a clean sans body, dramatic scale jumps, hanging punctuation feel.",
-      "Color: warm paper-white or rich ink backgrounds with one or two accent inks.",
-      "Layout: confident multi-column grids, pull quotes, generous margins, asymmetric balance.",
-      "Imagery: full-bleed photography with editorial cropping. Refined, never busy.",
-    ].join(" "),
+    designPrompt:
+      "Design system: refined print-magazine Editorial, art-directed ink-on-paper with confident negative space. Palette is restrained and paper-derived: a warm cream paper base (#FAF7F2) against warm near-black ink (#16130F) for the highest-contrast text pairing, mid grey (#7A7A7A) for captions and metadata, paper-tinted hairline rules (#E3DED3), and exactly ONE spot accent of editorial vermilion red (#D6352B) reserved for kickers, drop caps, and a single rule, never pure #000 on pure #FFF. Typography pairs an oversized high-contrast Didone display serif for headlines (Didot or Bodoni feel, extreme thick-thin strokes, set Black or Light at large size with tightened negative tracking) against a quiet old-style text serif for body (Source Serif or Lora feel, generous 1.5 leading), with all-caps small-caps grotesque or monospace labels set widely letterspaced in grey or the accent. Composition uses a deliberately under-filled multi-column grid with one dominant focal point, an entire reserved empty column or wide margin as expressive whitespace, dramatic scale contrast, and at least one element crossing the center so the page reads as one art-directed unit. Material is strictly flat: no drop shadows, no glows, no gradients, no glassmorphism, no rounded corners, only thin keyline rules and a faint uncoated-paper grain at low opacity, with contrast and crop doing the work. Imagery is a single art-directed full-bleed or whitespace-floated photograph treated in a consistent grade or high-contrast duotone, boldly cropped off-center with hard rectangular edges, integrated tightly with the type. Hold every slide to the same warm paper, the same single accent, and the same Didone-plus-text-serif-plus-label hierarchy so the full deck reads as one continuous publication.",
   },
   {
     id: "technical",
     name: "Technical / Dark",
-    description: "Dark, dense, IDE-flavored decks for engineering and product reviews.",
+    description: "Engineering-grade dark canvas with hairline panels, monospace signal labels, and one rationed accent.",
     isDefault: false,
-    designPrompt: [
-      "Design system: a dark, technical product aesthetic.",
-      "Background near-black charcoal, subtle grid or dotted texture, cool neutral palette with a single saturated accent (electric blue or green).",
-      "Typography: a geometric sans for headlines, a monospace for labels, identifiers, and data.",
-      "Layout: precise alignment, diagram-friendly negative space, room for annotated callouts.",
-      "Imagery: schematic, diagrammatic, or screenshot-like. Crisp, legible, engineering-grade.",
-    ].join(" "),
+    designPrompt:
+      "Design system: Technical / Dark, an engineering-instrument aesthetic built on near-black neutrals rather than pure black, with a canvas of #0A0A0A, one-step-lighter surfaces at #171717 and #262626, muted gray text around #8A8F98, and primary foreground #F7F8F8 against canvas (a high-contrast pairing of #F7F8F8 on #0A0A0A), using exactly one saturated accent (electric cyan #06B6D4 or terminal green #22C55E) rationed to a single focal element per slide. Typography pairs a tight geometric grotesk sans (Inter or Geist Sans feel, weights around 510 and 590) for human-readable display and body with a true monospace (JetBrains Mono or Geist Mono feel, weight 400) reserved for IDs, version numbers, metrics, and small eyebrow or caption labels; apply negative tracking near -0.04em on large headings at 32 to 64px, -0.01em on body, and neutral tracking on mono, with tabular lining figures so all numbers align. Composition is strict left-alignment on a visible 8px columnar grid, instrument-panel density balanced by generous 80 to 128px section gaps, a single focal point per view, and a clear weight ranking where the hero visual dominates and all chrome recedes into muted gray. Material depth comes only from crisp 1px hairline borders at white 8 percent opacity or literal gray #23252A, with small consistent radii of 0 to 8px; shadows are forbidden on flat cards and reserved only for true overlays, and gradients, glassmorphism, glossy fills, and textures are forbidden except a single faint low-opacity radial accent glow behind one hero element. Imagery favors real engineering substance over decoration: flat line-art system diagrams with monospace node labels, thin flat charts with one accent series and muted gridlines, and schematic data viz, all rendered as crisp vector line work with no stock photography, no people, and no 3D. An optional subliminal dot-matrix or hairline blueprint grid at 16 to 24px spacing and under 20 percent opacity may sit barely perceptible behind the canvas. Every slide must read as one continuous engineering tool: same near-black layered surfaces, same single rationed accent, same monospace signal labels, and the same hairline-bordered geometry throughout.",
   },
   {
     id: "bold",
     name: "Bold / Marketing",
-    description: "High-energy marketing slides — saturated color, big type, momentum.",
+    description: "Loud campaign energy: one saturated hero color, monumental display type, kinetic full-bleed composition.",
     isDefault: false,
-    designPrompt: [
-      "Design system: a bold, high-energy marketing aesthetic.",
-      "Color: saturated, confident color fields and tasteful gradients, strong figure-ground contrast.",
-      "Typography: oversized expressive display type, tight leading, punchy short headlines.",
-      "Layout: dynamic asymmetry, large shapes, a clear single message per slide with momentum.",
-      "Imagery: vivid lifestyle or abstract 3D shapes. Energetic but still composed.",
-    ].join(" "),
+    designPrompt:
+      "Design system: Bold Marketing, a high-energy campaign aesthetic built on one saturated hero color rationed to roughly 10 to 20 percent of the frame against calm neutral ground. Palette: electric cobalt blue #2D6BFF as the single hero accent, ink #0A0A0A for type and dark grounds, true white #FFFFFF as the primary surface (the load-bearing high-contrast pair is #0A0A0A on #FFFFFF), plus an optional acid-lime #CCFF00 spark used sparingly; saturated color never carries body text, and when a section goes full-bleed in the hero color, type flips to white for contrast. Typography is a single oversized condensed-grotesque display face (Anton or Archivo Black spirit) for the one dominant statement, set Bold to Black at 700 to 900, huge, with tight negative tracking near -0.025em and sub-1.0 leading so the line reads as one dense unit, paired with one clean neutral sans (Inter or Geist feel) at regular weight for any small supporting line, holding a dramatic 10x-plus size ratio. Composition rides a strict 8px grid yet feels kinetic: one dominant focal point per slide, hard left or edge alignment, oversized type that intentionally crops or runs off the margin, generous whitespace around the loud element, and asymmetry over centered symmetry. Material commits to ONE language: flat 100 percent solid color blocks with zero gradients and zero glow, hard offset drop-shadows (4px 4px 0 with no blur), and 2 to 4px solid black borders; forbidden everywhere are muddy multi-stop rainbow gradients, glassmorphism and blur, bevels and skeuomorphism, drop-shadow soup, and low-contrast saturated-on-saturated type. Imagery is color-disciplined and punchy: knockout cut-out subjects on flat saturated grounds, product visuals shown large or tilted, photography duotoned or color-graded into the hero blue, plus bold geometric shapes, arrows, and heavy-weight icons; avoid ungraded stock and clip-art entirely. Keep every slide reading as one system by holding the same hero hue, the same flat-block material, and the same condensed-display-over-neutral-sans hierarchy across the whole deck.",
   },
 ];
