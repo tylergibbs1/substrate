@@ -19,6 +19,9 @@ interface EditorState {
   /** Live narration of the in-app agent's steps for one deck — what it's doing as
    *  it builds/revises (set the title, added a slide "…", read a file, …). */
   agentSteps: { deckId: string; steps: AgentStep[] } | null;
+  /** The deck an in-app agent run (build/revise) is in flight on — brackets the
+   *  whole run, so "working" state + the feed don't ride the debounced edge. */
+  agentRun: { deckId: string } | null;
   /** Live WS link health — false while the socket is down/reconnecting. */
   wsConnected: boolean;
   quality: Quality;
@@ -34,6 +37,7 @@ interface EditorState {
   setActiveSlide: (id: string | null) => void;
   setMcpClients: (n: number) => void;
   setAgentActivity: (a: { deckId: string; agent: string } | null) => void;
+  setAgentRun: (run: { deckId: string } | null) => void;
   /** Reset the live step feed for a fresh agent session on a deck. */
   startAgentSteps: (deckId: string) => void;
   /** Append one narrated step (capped) to the live feed for a deck. */
@@ -56,6 +60,7 @@ export const useEditor = create<EditorState>((set) => ({
   mcpClients: 0,
   agentActivity: null,
   agentSteps: null,
+  agentRun: null,
   wsConnected: true,
   quality: "instant",
   showHistory: false,
@@ -69,6 +74,7 @@ export const useEditor = create<EditorState>((set) => ({
   setActiveSlide: (id) => set({ activeSlideId: id, showHistory: false }),
   setMcpClients: (n) => set({ mcpClients: n }),
   setAgentActivity: (a) => set({ agentActivity: a }),
+  setAgentRun: (run) => set({ agentRun: run }),
   startAgentSteps: (deckId) => set({ agentSteps: { deckId, steps: [] } }),
   pushAgentStep: (deckId, label, detail) =>
     set((s) => {

@@ -18,6 +18,7 @@ export function useServerEvents(activeDeckId: string | null, onMcpClients: (n: n
   const setWsConnected = useEditor((s) => s.setWsConnected);
   const setNotice = useEditor((s) => s.setNotice);
   const setAgentActivity = useEditor((s) => s.setAgentActivity);
+  const setAgentRun = useEditor((s) => s.setAgentRun);
   const startAgentSteps = useEditor((s) => s.startAgentSteps);
   const pushAgentStep = useEditor((s) => s.pushAgentStep);
 
@@ -43,7 +44,12 @@ export function useServerEvents(activeDeckId: string | null, onMcpClients: (n: n
           // the editor can light up live while the agent works. Edits themselves
           // still arrive via deck/slide/job-changed; this is the presence layer.
           setAgentActivity(event.active ? { deckId: event.deckId, agent: event.agent } : null);
-          // A fresh session clears the live step feed so the narration starts clean.
+          break;
+        case "agent-run":
+          // The in-app agent's run boundary: brackets the whole run, so the feed
+          // resets cleanly at the start and "working" holds through read-only
+          // exploration — independent of the debounced agent-activity edge.
+          setAgentRun(event.active ? { deckId: event.deckId } : null);
           if (event.active) startAgentSteps(event.deckId);
           break;
         case "agent-step":

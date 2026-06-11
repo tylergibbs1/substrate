@@ -254,6 +254,10 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     // Stream each agent step live so the Assistant panel narrates the build.
     const emitStep = (label: string, detail: string | null) =>
       void run(Effect.flatMap(Events, (e) => e.publish({ type: "agent-step", deckId, agent: "deck-builder", label, detail })));
+    // Bracket the whole run so the feed/working state spans it (not the 4s edge).
+    const emitRun = (active: boolean) =>
+      void run(Effect.flatMap(Events, (e) => e.publish({ type: "agent-run", deckId, active })));
+    emitRun(true);
     void buildDeckInto({
       deckId,
       description,
@@ -271,7 +275,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       .catch((e) => {
         runtime.runFork(Effect.logError(`deck-builder agent failed for ${deckId}`, e));
         void buildError(e instanceof Error ? e.message : "The agent failed to build this deck.");
-      });
+      })
+      .finally(() => emitRun(false));
     return json(res, 201, { deckId });
   }
 
@@ -306,6 +311,10 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       // Read review mode so destructive agent tools are withheld when it's on.
       const deck = await run(Effect.flatMap(Decks, (d) => d.getDeck(deckId)));
       if (!deck) return json(res, 404, { error: "deck not found" });
+      // Bracket the run so the live feed/working state spans it (not the 4s edge).
+      const emitRun = (active: boolean) =>
+        void run(Effect.flatMap(Events, (e) => e.publish({ type: "agent-run", deckId, active })));
+      emitRun(true);
       try {
         return json(
           res,
@@ -324,6 +333,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         );
       } catch (e) {
         return json(res, 502, { error: e instanceof Error ? e.message : "assistant failed" });
+      } finally {
+        emitRun(false);
       }
     }
     if (sub === "slides" && method === "POST") {

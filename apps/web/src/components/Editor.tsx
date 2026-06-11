@@ -30,13 +30,18 @@ export function Editor({ deckId }: { deckId: string }) {
     }
   }, [activeSlideId, deck.data, setActiveSlide]);
 
-  // Follow the agent: while a 3rd-party agent is driving THIS deck, jump the
-  // canvas to its newest slide as each one is added, so you watch the build live.
+  // Follow the agent: while an agent drives THIS deck, jump to its newest slide as
+  // each one is ADDED — only on a real append (count grew), never on a deletion or
+  // reorder, which shouldn't yank the selection to the end.
   const agentOnThisDeck = agentActivity?.deckId === deckId;
   const slideCount = deck.data?.slides.length ?? 0;
+  const prevSlideCount = useRef(slideCount);
   useEffect(() => {
-    if (!agentOnThisDeck || slideCount === 0) return;
-    setActiveSlide(deck.data!.slides[slideCount - 1]!.id);
+    const grew = slideCount > prevSlideCount.current;
+    prevSlideCount.current = slideCount;
+    if (agentOnThisDeck && grew && slideCount > 0) {
+      setActiveSlide(deck.data!.slides[slideCount - 1]!.id);
+    }
   }, [agentOnThisDeck, slideCount, setActiveSlide]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Generate display titles for any untitled slides (once each). The server

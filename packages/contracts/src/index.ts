@@ -271,6 +271,15 @@ export const ServerEvent = Schema.Union([
     label: NonEmpty,
     detail: Schema.NullOr(Schema.String),
   }),
+  /** Brackets a whole in-app agent run (build/revise): `active: true` at the start,
+   *  `false` at the end. Unlike the debounced agent-activity edge, this spans the
+   *  entire run — so the live feed resets cleanly and the "working" state holds
+   *  through read-only exploration, not just write bursts. */
+  Schema.Struct({
+    type: Schema.Literal("agent-run"),
+    deckId: NonEmpty,
+    active: Schema.Boolean,
+  }),
 ]);
 export type ServerEvent = typeof ServerEvent.Type;
 

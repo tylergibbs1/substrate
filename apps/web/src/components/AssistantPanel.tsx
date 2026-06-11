@@ -29,10 +29,12 @@ export function AssistantPanel({ detail }: { detail: DeckDetail }) {
   const [runs, setRuns] = useState<Run[]>([]);
 
   // Live narration of the in-app agent's run on THIS deck (build or revise).
+  // "Working" is driven by the run bracket (agentRun), not the debounced activity
+  // edge — so it holds through the agent's read-only exploration, not just writes.
   const agentStepsState = useEditor((s) => s.agentSteps);
-  const agentActivity = useEditor((s) => s.agentActivity);
+  const agentRun = useEditor((s) => s.agentRun);
   const steps = agentStepsState?.deckId === detail.deck.id ? agentStepsState.steps : [];
-  const agentLive = agentActivity?.deckId === detail.deck.id;
+  const agentLive = agentRun?.deckId === detail.deck.id;
 
   // Which model is actually driving the in-app agent (configured in Settings).
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
@@ -84,7 +86,7 @@ export function AssistantPanel({ detail }: { detail: DeckDetail }) {
         {/* Live narration — what the agent is doing right now, streamed step by step. */}
         {(agentLive || steps.length > 0) && (
           <div className="rounded-lg border border-agent-soft bg-agent-wash p-2.5 space-y-1.5">
-            <div className="flex items-center gap-1.5 mono text-[10px] uppercase tracking-wider text-agent">
+            <div className="flex items-center gap-1.5 mono text-[10px] uppercase tracking-eyebrow text-agent">
               {agentLive ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
               {agentLive ? "Agent working" : "Agent finished"}
             </div>

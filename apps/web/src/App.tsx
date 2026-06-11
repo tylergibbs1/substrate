@@ -24,17 +24,15 @@ export default function App() {
   // (e.g. Claude Code over MCP just created one), jump to its canvas so you watch
   // the build live. Fires once per agent session — it won't yank you back if you
   // navigate away afterward.
-  const followedRef = useRef<string | null>(null);
+  // Auto-open each deck an agent drives the FIRST time we ever see it — tracked in
+  // a persistent Set so an idle gap (presence cycles active→idle→active mid-run)
+  // never re-fires the navigation and yanks the user back somewhere they left.
+  const followedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const id = agentActivity?.deckId ?? null;
-    if (!id) {
-      followedRef.current = null;
-      return;
-    }
-    if (id !== followedRef.current) {
-      followedRef.current = id;
-      if (id !== activeDeckId) setActiveDeck(id);
-    }
+    const id = agentActivity?.deckId;
+    if (!id || followedRef.current.has(id)) return;
+    followedRef.current.add(id);
+    if (id !== activeDeckId) setActiveDeck(id);
   }, [agentActivity?.deckId, activeDeckId, setActiveDeck]);
 
   // ⌘K / Ctrl+K opens the command palette anywhere (keyboard-primary input).

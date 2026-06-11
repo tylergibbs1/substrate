@@ -20,7 +20,11 @@ import { Events } from "./Events.ts";
  * agent name rides along so the UI can name who is working.
  */
 
-const IDLE_MS = 4000;
+// Real agents routinely pause >4s between tool calls (model reasoning, reading a
+// large file, an async render). Hold presence well past that so the pill doesn't
+// flicker mid-run; the in-app run bracket (agent-run) drives the precise feed/working
+// state, while this is just the coarse "an agent is around" signal.
+const IDLE_MS = 20000;
 
 interface Live {
   readonly agent: string;
