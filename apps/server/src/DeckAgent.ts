@@ -245,8 +245,18 @@ export async function buildDeckInto(
     const tools = { ...scopeTools(await mcp.tools(), opts.deckId, BUILD_TOOLS), ...fc.tools };
     const result = await generateText({
       model: agentModel(opts),
-      system: INSTRUCTIONS + fc.note,
-      prompt: `deck_id: ${opts.deckId}\n\nDeck to build:\n${opts.description}`,
+      // Cache the system prompt + tool defs (Anthropic ephemeral): the build loops
+      // 20+ steps re-sending the same large INSTRUCTIONS + tools, so a cache
+      // breakpoint on the system message makes every step after the first a cache
+      // read. Ignored by non-Anthropic providers.
+      messages: [
+        {
+          role: "system",
+          content: INSTRUCTIONS + fc.note,
+          providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+        },
+        { role: "user", content: `deck_id: ${opts.deckId}\n\nDeck to build:\n${opts.description}` },
+      ],
       tools,
       // Narrate each tool call live (param types infer from `tools`).
       onStepFinish: ({ toolCalls }) => {
@@ -337,8 +347,15 @@ export async function reviseDeck(
       : REVISE_INSTRUCTIONS;
     const result = await generateText({
       model: agentModel(opts),
-      system,
-      prompt: `deck_id: ${opts.deckId}\n\nRevision request:\n${opts.instruction}`,
+      // Cache the system prompt + tools (Anthropic ephemeral) across the run.
+      messages: [
+        {
+          role: "system",
+          content: system,
+          providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+        },
+        { role: "user", content: `deck_id: ${opts.deckId}\n\nRevision request:\n${opts.instruction}` },
+      ],
       tools,
       onStepFinish: ({ toolCalls }) => {
         for (const call of toolCalls) {
