@@ -34,11 +34,31 @@ jobs:
       # Build the web app + bundle the server into a single self-contained .mjs.
       - run: pnpm build:dist
 
-      # Package the platform installer (dmg / nsis / AppImage) and upload it to
-      # the GitHub Release for this tag.
+      # Package the platform installer (dmg / nsis / AppImage), sign it if certs
+      # are configured (else build unsigned), and upload to the GitHub Release.
+      #
+      # Optional repo secrets to enable signing — until they're set, builds are
+      # unsigned and this step still works:
+      #   macOS:   MAC_CSC_LINK (base64 of the Developer ID .p12), MAC_CSC_KEY_PASSWORD
+      #            APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID  (notarization)
+      #   Windows: WIN_CSC_LINK (base64 of the .pfx), WIN_CSC_KEY_PASSWORD
       - name: Package + publish
-        run: pnpm --filter @substrate/desktop exec electron-builder --publish always
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # No signing certs yet: don't try to auto-discover an identity.
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || (runner.os == 'Windows' && secrets.WIN_CSC_LINK || '') }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || (runner.os == 'Windows' && secrets.WIN_CSC_KEY_PASSWORD || '') }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          args="--publish always"
+          # No signing cert on this platform → build unsigned, don't probe the keychain.
+          if [ -z "$CSC_LINK" ]; then
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          # Notarize macOS only when both a cert and Apple creds are present.
+          if [ "${{ runner.os }}" = "macOS" ] && [ -n "$CSC_LINK" ] && [ -n "$APPLE_ID" ]; then
+            args="$args -c.mac.notarize=true"
+          fi
+          pnpm --filter @substrate/desktop exec electron-builder $args

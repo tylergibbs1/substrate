@@ -41,6 +41,27 @@ wingetcreate update Tylergibbs1.Substrate --version 0.3.0 \
 Per release: update `PackageVersion`, `InstallerUrl`, and `InstallerSha256`
 (uppercase) in `Tylergibbs1.Substrate.installer.yaml`.
 
+## Code signing + notarization
+
+The release workflow signs automatically **when these repo secrets are set**
+(Settings → Secrets and variables → Actions). Until then it builds unsigned and
+still publishes — nothing else to change.
+
+**macOS** (Developer ID Application cert + an App Store Connect app-specific password):
+- `MAC_CSC_LINK` — base64 of the exported `.p12`: `base64 -i cert.p12 | pbcopy`
+- `MAC_CSC_KEY_PASSWORD` — the `.p12` export password
+- `APPLE_ID` — your Apple ID email
+- `APPLE_APP_SPECIFIC_PASSWORD` — an app-specific password (appleid.apple.com)
+- `APPLE_TEAM_ID` — your 10-char Team ID
+
+**Windows** (a code-signing `.pfx`, e.g. from an EV/OV cert or Azure Trusted Signing):
+- `WIN_CSC_LINK` — base64 of the `.pfx`
+- `WIN_CSC_KEY_PASSWORD` — the `.pfx` password
+
+Signing also unlocks **auto-updates** — `electron-updater` is wired in
+`apps/desktop/main.js` and checks the GitHub Release on launch, but macOS
+(Squirrel.Mac) only updates a signed app.
+
 ## Before either is accepted
 
 - **Add a `LICENSE` file** to the repo (the winget locale manifest references it
