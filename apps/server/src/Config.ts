@@ -31,6 +31,8 @@ export const DB_PATH = path.join(DATA_DIR, "substrate.sqlite");
 const TOKEN_PATH = path.join(DATA_DIR, "mcp-token");
 /** Where a UI-entered OpenAI key is persisted (mode 0600). See Settings.ts. */
 export const OPENAI_KEY_PATH = path.join(DATA_DIR, "openai-key");
+/** JSON store for all in-app-tweakable settings (keys, agent provider/model). */
+export const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
 
 fs.mkdirSync(BLOBS_DIR, { recursive: true });
 
@@ -67,6 +69,12 @@ export const config = {
   textModel: process.env.SUBSTRATE_TEXT_MODEL ?? "gpt-5.1",
   /** Small/cheap model for deriving short slide titles in the rail. */
   titleModel: process.env.SUBSTRATE_TITLE_MODEL ?? "gpt-5-mini-2025-08-07",
+  /** Deck-building agent provider + model (via the Vercel AI SDK, so it's swappable).
+   *  Anthropic Claude is the default — stronger at design. Image rendering always
+   *  uses OpenAI (gpt-image-2) regardless of this. */
+  agentProvider: (process.env.SUBSTRATE_AGENT_PROVIDER ?? "anthropic") as "anthropic" | "openai",
+  agentModel: process.env.SUBSTRATE_AGENT_MODEL ?? "claude-opus-4-8",
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   forceMock: process.env.SUBSTRATE_FORCE_MOCK === "1",
   /** Artificial delay for the mock renderer (ms) — lets dev see loading states. */
   mockDelayMs: Number(process.env.SUBSTRATE_MOCK_DELAY_MS ?? 0),

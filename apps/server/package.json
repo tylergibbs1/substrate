@@ -13,11 +13,14 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.82",
+    "@ai-sdk/mcp": "^1.0.47",
+    "@ai-sdk/openai": "^3.0.69",
     "@effect/platform-node": "catalog:",
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "@openai/agents": "^0.11.6",
     "@substrate/contracts": "workspace:*",
     "@substrate/shared": "workspace:*",
+    "ai": "^6.0.201",
     "effect": "catalog:",
     "ws": "^8.18.0",
     "zod": "^4.4.3"

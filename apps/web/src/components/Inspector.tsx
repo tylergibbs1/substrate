@@ -15,11 +15,7 @@ export function Inspector({ detail, slide }: { detail: DeckDetail; slide: Slide 
   const preset = detail.deck.designPresetId;
 
   return (
-    <div className="flex flex-col h-full">
-      <header className="mono flex items-center px-3 h-9 shrink-0 border-b border-line text-[10px] uppercase tracking-wider text-fg-faint">
-        Inspector
-      </header>
-
+    <div className="flex flex-col h-full min-h-0">
       <div className="flex-1 overflow-auto p-3 space-y-5">
         {/* Quality — machinery on demand (§7.4): a quiet segmented control, not
             two cards competing with the slide. */}

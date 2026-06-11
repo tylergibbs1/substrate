@@ -5,7 +5,7 @@ import { useSlideActions } from "../lib/slideActions.js";
 import { useEditor } from "../store.js";
 import { SlideRail } from "./SlideRail.js";
 import { Canvas } from "./Canvas.js";
-import { Inspector } from "./Inspector.js";
+import { RightRail } from "./RightRail.js";
 import { DeckBar } from "./DeckBar.js";
 import { TopBar } from "./TopBar.js";
 import { Empty } from "../ui.js";
@@ -96,7 +96,7 @@ export function Editor({ deckId }: { deckId: string }) {
           <Canvas detail={detail} slide={slide} />
         </div>
         <div className="min-h-0 border-l border-line bg-ink-1">
-          <Inspector detail={detail} slide={slide} />
+          <RightRail detail={detail} slide={slide} />
         </div>
       </div>
       <DeckBar detail={detail} />

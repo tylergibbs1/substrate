@@ -23,7 +23,7 @@ import { assemblePrompt } from "@substrate/shared/PromptAssembly";
 import { DEFAULT_PRESET_ID, DESIGN_PRESETS } from "@substrate/shared/Presets";
 import { DATA_DIR } from "./Config.ts";
 import { Sqlite } from "./Sqlite.ts";
-import { Provider } from "./Provider.ts";
+import { Provider, type ProviderError } from "./Provider.ts";
 import { Generation } from "./Generation.ts";
 import { Events } from "./Events.ts";
 import { blobPath, hash, id, newSeed, now, writeBlob } from "./util.ts";
@@ -179,6 +179,8 @@ export interface DecksShape {
   readonly reorder: (deckId: string, orderedSlideIds: ReadonlyArray<string>) => Effect.Effect<void>;
   readonly setReviewMode: (deckId: string, on: boolean) => Effect.Effect<void>;
   readonly setDeckTitle: (deckId: string, title: string) => Effect.Effect<void>;
+  /** Compile a DESIGN.md / design-system spec into a deck main design prompt. */
+  readonly compileDesign: (source: string) => Effect.Effect<string, ProviderError>;
   readonly exportDeck: (deckId: string, format: ExportFormat) => Effect.Effect<{ path: string; note?: string }>;
   readonly exportManifest: (deckId: string, format: ExportFormat) => Effect.Effect<ExportBundle>;
   /** Generate + persist display titles for any slides that lack one (batched into
@@ -315,6 +317,8 @@ const make = Effect.gen(function* () {
         [slideId],
       )
       .pipe(Effect.map((r) => (r ? mapSlide(r) : null)));
+
+  const compileDesign: DecksShape["compileDesign"] = (source) => provider.designPrompt(source);
 
   const setDeckTitle: DecksShape["setDeckTitle"] = (deckId, title) =>
     Effect.gen(function* () {
@@ -519,17 +523,25 @@ const make = Effect.gen(function* () {
 
   const addSlide: DecksShape["addSlide"] = (deckId, prompt, position, author = HUMAN, render = true) =>
     Effect.gen(function* () {
-      const countRow = yield* sql.get<{ c: number }>("SELECT COUNT(*) c FROM slides WHERE deck_id = ?", [deckId]);
-      const at = position ?? countRow?.c ?? 0;
-      yield* sql.run("UPDATE slides SET order_index = order_index + 1 WHERE deck_id = ? AND order_index >= ?", [deckId, at]);
       const slideId = id("slide");
-      yield* sql.run("INSERT INTO slides (id, deck_id, order_index, prompt, current_version_id, seed) VALUES (?, ?, ?, ?, NULL, ?)", [
-        slideId,
-        deckId,
-        at,
-        prompt,
-        newSeed(),
-      ]);
+      if (position === undefined) {
+        // Atomic append: compute order_index inside the INSERT so concurrent appends
+        // (e.g. an agent emitting several add_slide calls) can't collide on the index
+        // and jumble slide order.
+        yield* sql.run(
+          "INSERT INTO slides (id, deck_id, order_index, prompt, current_version_id, seed) VALUES (?, ?, (SELECT COALESCE(MAX(order_index), -1) + 1 FROM slides WHERE deck_id = ?), ?, NULL, ?)",
+          [slideId, deckId, deckId, prompt, newSeed()],
+        );
+      } else {
+        yield* sql.run("UPDATE slides SET order_index = order_index + 1 WHERE deck_id = ? AND order_index >= ?", [deckId, position]);
+        yield* sql.run("INSERT INTO slides (id, deck_id, order_index, prompt, current_version_id, seed) VALUES (?, ?, ?, ?, NULL, ?)", [
+          slideId,
+          deckId,
+          position,
+          prompt,
+          newSeed(),
+        ]);
+      }
       yield* recordSubstrate(slideId, prompt, author);
       if (render) yield* generation.enqueueRender(slideId, { quality: "instant" });
       yield* events.publish({ type: "deck-changed", deckId });
@@ -732,6 +744,7 @@ const make = Effect.gen(function* () {
     getSlide,
     deleteSlide,
     setDeckTitle,
+    compileDesign,
   };
 });
 

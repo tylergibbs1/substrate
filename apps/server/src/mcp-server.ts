@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import type { Author } from "@substrate/contracts";
 import { Decks, type DecksShape } from "./Decks.ts";
 import { blobExists, blobPath } from "./util.ts";
+import { resolveDesignSource } from "./DesignImport.ts";
 import { runtime } from "./runtime.ts";
 
 /**
@@ -91,7 +92,7 @@ export function buildMcpServer(agentName?: string): McpServer {
     {
       title: "Set design prompt",
       description:
-        "Update the deck's main design prompt. mode 'direct' applies and re-renders the whole deck; 'propose' lands a pending suggestion. Review mode forces propose. Pass `note` to explain the change to the human reviewer.",
+        "Set the deck's main design prompt from your own wording. To apply a whole DESIGN.md / design-system spec instead, use set_design_from_md. mode 'direct' applies and re-renders the whole deck; 'propose' lands a pending suggestion. Review mode forces propose. Pass `note` to explain the change to the human reviewer.",
       inputSchema: {
         deck_id: z.string(),
         design_prompt: z.string(),
@@ -116,6 +117,30 @@ export function buildMcpServer(agentName?: string): McpServer {
       },
     },
     async (a) => guard(() => withDecks((d) => d.addSlide(a.deck_id, a.prompt, a.position, author, a.render))),
+  );
+
+  server.registerTool(
+    "set_design_from_md",
+    {
+      title: "Set design from DESIGN.md",
+      description:
+        "Compile a DESIGN.md / design-system spec into the deck's main design prompt and apply it (re-renders the deck). Pass the raw DESIGN.md text, or a URL to fetch it. mode 'direct' applies; 'propose' lands a suggestion for human review.",
+      inputSchema: {
+        deck_id: z.string(),
+        design_md: z.string(),
+        mode: z.enum(["direct", "propose"]).default("direct"),
+      },
+    },
+    async (a) =>
+      guard(async () => {
+        const text = await resolveDesignSource(a.design_md);
+        return withDecks((d) =>
+          d.compileDesign(text).pipe(
+            Effect.flatMap((designPrompt) => d.setDesignPrompt(a.deck_id, designPrompt, a.mode, author)),
+            Effect.orDie,
+          ),
+        );
+      }),
   );
 
   server.registerTool(
@@ -165,7 +190,7 @@ export function buildMcpServer(agentName?: string): McpServer {
     {
       title: "Edit slide prompt",
       description:
-        "Edit a slide's prompt. mode 'direct' applies and renders; 'propose' lands a pending suggestion a human approves. Review mode forces propose. Pass `note` to explain the change to the human reviewer.",
+        "Change what a slide says/shows by rewriting its prompt; this re-renders it (to re-render the same prompt unchanged, use regenerate_slide). mode 'direct' applies and renders; 'propose' lands a pending suggestion a human approves. Review mode forces propose. Pass `note` to explain the change to the human reviewer.",
       inputSchema: {
         slide_id: z.string(),
         prompt: z.string(),
@@ -200,7 +225,8 @@ export function buildMcpServer(agentName?: string): McpServer {
     "regenerate_slide",
     {
       title: "Regenerate slide",
-      description: "Re-render a slide from its current prompts. Optionally bump quality or reseed.",
+      description:
+        "Re-render a slide from its CURRENT prompt without changing the text (use edit_slide_prompt to change what the slide says). Optionally bump quality, or reseed for a genuinely different take on the same prompt.",
       inputSchema: { slide_id: z.string(), quality: z.enum(["instant", "thinking"]).optional(), reseed: z.boolean().optional() },
     },
     async (a) => guard(() => withDecks((d) => d.regenerate(a.slide_id, { quality: a.quality, reseed: a.reseed }))),

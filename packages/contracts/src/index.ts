@@ -223,11 +223,15 @@ export type PickVersionRequest = typeof PickVersionRequest.Type;
 export const ReviewModeRequest = Schema.Struct({ on: Schema.Boolean });
 export type ReviewModeRequest = typeof ReviewModeRequest.Type;
 
-/** Set or clear the OpenAI API key. null/empty clears it (reverts to env/preview). */
-export const SetApiKeyRequest = Schema.Struct({
-  openaiApiKey: Schema.NullOr(Schema.String),
+/** Update any subset of the in-app settings. For keys, an empty string clears the
+ *  override (reverts to env/preview); omitted fields are left unchanged. */
+export const UpdateSettingsRequest = Schema.Struct({
+  openaiApiKey: Schema.optional(Schema.NullOr(Schema.String)),
+  anthropicApiKey: Schema.optional(Schema.NullOr(Schema.String)),
+  agentProvider: Schema.optional(Schema.Literals(["anthropic", "openai"])),
+  agentModel: Schema.optional(Schema.String),
 });
-export type SetApiKeyRequest = typeof SetApiKeyRequest.Type;
+export type UpdateSettingsRequest = typeof UpdateSettingsRequest.Type;
 
 // ---------------------------------------------------------------------------
 // Wire protocol — WebSocket events (server -> client)
@@ -266,7 +270,7 @@ export const ServerStatus = Schema.Struct({
 });
 export type ServerStatus = typeof ServerStatus.Type;
 
-/** Client-facing settings view — never the full key, only a masked tail. */
+/** Client-facing settings view — never the full keys, only masked tails. */
 export const ServerSettings = Schema.Struct({
   hasKey: Schema.Boolean,
   keyMasked: Schema.NullOr(Schema.String),
@@ -274,5 +278,11 @@ export const ServerSettings = Schema.Struct({
   usingMock: Schema.Boolean,
   forceMock: Schema.Boolean,
   imageModel: Schema.String,
+  // The deck-building agent (Anthropic Claude by default; swappable in-app).
+  hasAnthropicKey: Schema.Boolean,
+  anthropicKeyMasked: Schema.NullOr(Schema.String),
+  anthropicKeyFromEnv: Schema.Boolean,
+  agentProvider: Schema.Literals(["anthropic", "openai"]),
+  agentModel: Schema.String,
 });
 export type ServerSettings = typeof ServerSettings.Type;

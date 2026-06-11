@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, ArrowRight, Loader2, Wand2, KeyRound, Sparkles } from "lucide-react";
+import { Plus, ArrowRight, Loader2, Wand2, KeyRound, Sparkles, FileCode2 } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useEditor } from "../store.js";
 import { Button, cx } from "../ui.js";
@@ -22,31 +22,36 @@ export function DeckPicker() {
 
   const [presetId, setPresetId] = useState("apple");
   const [customStyle, setCustomStyle] = useState("");
+  const [mdSlug, setMdSlug] = useState("");
   const [title, setTitle] = useState("");
   const [topic, setTopic] = useState("");
   const [aspect, setAspect] = useState<AspectRatio>("16:9");
-  const [notice, setNotice] = useState<string | null>(null);
+  const [useAgent, setUseAgent] = useState(false);
   const isCustom = presetId === "custom";
+  const isDesignMd = presetId === "designmd";
+  const registry = useQuery({ queryKey: ["designRegistry"], queryFn: api.designRegistry, enabled: isDesignMd, staleTime: Infinity });
 
+  // The chosen design as a main design prompt: a preset is referenced by id, a
+  // Custom style is its raw text, and a DESIGN.md is compiled by the server.
+  const resolveDesignPrompt = async (): Promise<string | undefined> => {
+    if (isCustom) return customStyle.trim() || undefined;
+    if (isDesignMd && mdSlug) return (await api.compileDesign(mdSlug)).designPrompt;
+    return undefined;
+  };
+
+  // No-agent path: create a BLANK deck (no auto-outline) and drop the user in to
+  // build it slide by slide themselves. The agent toggle is the whole line:
+  // off = you build it, on = the agent builds it.
   const create = useMutation({
-    mutationFn: () =>
+    mutationFn: async () =>
       api.createDeck({
-        title: title.trim() || topic.trim() || "Untitled deck",
+        title: title.trim() || "Untitled deck",
         aspectRatio: aspect,
-        designPresetId: isCustom ? undefined : presetId,
-        designPrompt: isCustom ? customStyle.trim() || undefined : undefined,
-        outline: topic.trim() || undefined,
+        designPresetId: isCustom || isDesignMd ? undefined : presetId,
+        designPrompt: await resolveDesignPrompt(),
       }),
-    onSuccess: ({ deckId, outlineFailed }) => {
+    onSuccess: ({ deckId }) => {
       qc.invalidateQueries({ queryKey: ["decks"] });
-      // Distinguish a failed outline from a deliberately empty deck: stay here
-      // and surface it, rather than dropping the user into a silently empty deck.
-      if (outlineFailed) {
-        setNotice(
-          "Couldn't outline that topic — the model was unreachable. Created an empty deck; open it below to add slides, or try again.",
-        );
-        return;
-      }
       setActiveDeck(deckId);
     },
   });
@@ -55,12 +60,15 @@ export function DeckPicker() {
   // editor shows the slides appear/render live (over the same MCP the 3rd-party
   // agents use). We get the deck id back at once and drop the user straight in.
   const build = useMutation({
-    mutationFn: () =>
-      api.buildDeck({
-        description: topic.trim() + (isCustom && customStyle.trim() ? `\n\nVisual style: ${customStyle.trim()}` : ""),
+    mutationFn: async () => {
+      const designPrompt = await resolveDesignPrompt();
+      return api.buildDeck({
+        description: topic.trim(),
         aspectRatio: aspect,
-        ...(isCustom ? {} : { designPresetId: presetId }),
-      }),
+        ...(isCustom || isDesignMd ? {} : { designPresetId: presetId }),
+        ...(designPrompt ? { designPrompt } : {}),
+      });
+    },
     onSuccess: ({ deckId }) => {
       qc.invalidateQueries({ queryKey: ["decks"] });
       setActiveDeck(deckId);
@@ -94,21 +102,31 @@ export function DeckPicker() {
 
           {/* One bordered object — title, prompt, control bar — like a single input. */}
           <div className="rounded-xl border border-line bg-ink-2 focus-within:border-fg-faint transition-colors">
+            {/* Title + body keep a constant height across modes so toggling the
+                agent doesn't shift the footer and everything below it. */}
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Name your deck (optional)"
+              placeholder={useAgent ? "Name your deck (optional)" : "Name your deck"}
               aria-label="Deck title"
-              className="w-full bg-transparent px-4 pt-3.5 pb-1 text-[13px] text-fg-dim placeholder:text-fg-faint outline-none"
+              className="w-full bg-transparent px-4 pt-3.5 pb-1 text-[14px] text-fg placeholder:text-fg-faint outline-none"
             />
-            <textarea
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder="Describe your deck — a topic, an audience, a goal. We outline it into ~12 slides and render each one."
-              rows={3}
-              aria-label="Deck topic"
-              className="w-full bg-transparent px-4 pb-3 text-[15px] leading-relaxed text-fg placeholder:text-fg-faint outline-none resize-none"
-            />
+            <div className="min-h-[90px]">
+              {useAgent ? (
+                <textarea
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="Describe your deck — a topic, an audience, a goal. An agent designs the look and writes every slide."
+                  rows={3}
+                  aria-label="Deck topic"
+                  className="w-full bg-transparent px-4 pb-3 text-[15px] leading-relaxed text-fg placeholder:text-fg-faint outline-none resize-none"
+                />
+              ) : (
+                <p className="px-4 pt-1.5 pb-3 text-[12.5px] leading-relaxed text-fg-faint">
+                  You'll start with a blank deck — add and write each slide yourself. Turn on the agent to have one built for you.
+                </p>
+              )}
+            </div>
             <div className="flex items-center justify-between gap-3 border-t border-line px-3 py-2.5">
               <div className="flex items-center gap-0.5" role="group" aria-label="Aspect ratio">
                 {(["16:9", "4:3", "1:1"] as AspectRatio[]).map((a) => (
@@ -126,27 +144,52 @@ export function DeckPicker() {
                 ))}
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  onClick={() => build.mutate()}
-                  disabled={!topic.trim() || build.isPending || create.isPending}
-                  title="Let an OpenAI agent design and write every slide from your description"
+                {/* Opt into the agent: off = a blank deck you build yourself,
+                    on = an OpenAI agent designs and writes every slide. */}
+                <button
+                  type="button"
+                  onClick={() => setUseAgent((v) => !v)}
+                  aria-pressed={useAgent}
+                  title="Have an OpenAI agent design and write every slide for you (instead of building it yourself)"
+                  className={cx(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] transition-colors",
+                    useAgent
+                      ? "border-accent text-fg bg-[color-mix(in_oklab,var(--color-accent)_10%,transparent)]"
+                      : "border-line text-fg-faint hover:text-fg-dim hover:border-line-2",
+                  )}
                 >
-                  {build.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  {build.isPending ? "Building…" : "Build with agent"}
-                </Button>
-                <Button variant="primary" onClick={() => create.mutate()} disabled={create.isPending || build.isPending}>
-                  {create.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                  {create.isPending ? "Generating…" : "Generate"}
+                  <Sparkles size={12} className={useAgent ? "text-accent" : "text-fg-faint"} /> agent
+                </button>
+                <Button
+                  variant="primary"
+                  onClick={() => (useAgent ? build : create).mutate()}
+                  disabled={create.isPending || build.isPending || (useAgent && !topic.trim())}
+                  title={useAgent ? "An agent designs and writes every slide from your description" : "Create a blank deck and build the slides yourself"}
+                  className="min-w-[148px] justify-center"
+                >
+                  {create.isPending || build.isPending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : useAgent ? (
+                    <Sparkles size={14} />
+                  ) : (
+                    <Plus size={14} />
+                  )}
+                  {build.isPending
+                    ? "Building…"
+                    : create.isPending
+                      ? "Creating…"
+                      : useAgent
+                        ? "Build with agent"
+                        : "Create deck"}
                 </Button>
               </div>
             </div>
           </div>
 
-          {/* Design — a quiet row of pills under the prompt; Custom reveals a field. */}
-          {/* No row-gap: the reveal must collapse to a true 0 when closed. */}
-          <div className="grid">
+          {/* Design — two labeled groups: curated presets, and bring-your-own. */}
+          <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mono text-[10px] uppercase tracking-wider text-fg-faint mr-1">Design</span>
+              <span className="mono text-[10px] uppercase tracking-wider text-fg-faint w-[66px] shrink-0">Presets</span>
               {presets.data?.map((p) => (
                 <button type="button"
                   key={p.id}
@@ -163,19 +206,38 @@ export function DeckPicker() {
                   {p.name}
                 </button>
               ))}
-              <button type="button"
-                onClick={() => setPresetId("custom")}
-                aria-pressed={isCustom}
-                className={cx(
-                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] transition-colors",
-                  isCustom
-                    ? "border-accent text-fg bg-[color-mix(in_oklab,var(--color-accent)_10%,transparent)]"
-                    : "border-dashed border-line-2 text-fg-dim hover:border-fg-faint hover:text-fg",
-                )}
-              >
-                <Wand2 size={12} className="text-fg-faint" /> Custom
-              </button>
             </div>
+
+            {/* Bring your own — Custom or a DESIGN.md; each reveals a field below.
+                No row-gap in this subgroup so those reveals collapse to a true 0. */}
+            <div className="grid">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mono text-[10px] uppercase tracking-wider text-fg-faint w-[66px] shrink-0">Your own</span>
+                <button type="button"
+                  onClick={() => setPresetId("custom")}
+                  aria-pressed={isCustom}
+                  className={cx(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] transition-colors",
+                    isCustom
+                      ? "border-accent text-fg bg-[color-mix(in_oklab,var(--color-accent)_10%,transparent)]"
+                      : "border-dashed border-line-2 text-fg-dim hover:border-fg-faint hover:text-fg",
+                  )}
+                >
+                  <Wand2 size={12} className="text-fg-faint" /> Custom
+                </button>
+                <button type="button"
+                  onClick={() => setPresetId("designmd")}
+                  aria-pressed={isDesignMd}
+                  className={cx(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] transition-colors",
+                    isDesignMd
+                      ? "border-accent text-fg bg-[color-mix(in_oklab,var(--color-accent)_10%,transparent)]"
+                      : "border-dashed border-line-2 text-fg-dim hover:border-fg-faint hover:text-fg",
+                  )}
+                >
+                  <FileCode2 size={12} className="text-fg-faint" /> DESIGN.md
+                </button>
+              </div>
 
             {/* Reveal the custom-style field by animating max-height so content below
                 slides instead of snapping (§5/§6). overflow-hidden + max-h-0 → true 0;
@@ -199,15 +261,45 @@ export function DeckPicker() {
                 />
               </div>
             </div>
+
+            {/* Import a DESIGN.md (paste, or a getdesign.md link) — compiled server-side. */}
+            <div
+              className={cx(
+                "overflow-hidden transition-[max-height,opacity] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
+                isDesignMd ? "max-h-52 opacity-100" : "max-h-0 opacity-0",
+              )}
+              aria-hidden={!isDesignMd}
+            >
+              <div className="pt-2 grid gap-1.5">
+                <select
+                  value={mdSlug}
+                  onChange={(e) => setMdSlug(e.target.value)}
+                  aria-label="Choose a design from getdesign.md"
+                  tabIndex={isDesignMd ? 0 : -1}
+                  className="w-full bg-ink-3 border border-line-2 rounded-lg px-3 py-2 outline-none focus:border-accent text-[12px] text-fg"
+                >
+                  <option value="">
+                    {registry.isLoading ? "Loading designs…" : `Choose from getdesign.md (${registry.data?.length ?? 0})…`}
+                  </option>
+                  {registry.data?.map((d) => (
+                    <option key={d.slug} value={d.slug}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-fg-faint">
+                  Compiled into this deck's design — the image model approximates the look (palette, type, mood), not exact tokens.
+                </span>
+              </div>
+            </div>
+            </div>
           </div>
 
-          <p className="text-center text-[11px] text-fg-faint">
-            Leave the prompt empty to start with a blank deck.
-          </p>
-          {create.isError && (
-            <div className="text-center text-danger text-xs">{(create.error as Error).message}</div>
+          {(create.isError || build.isError) && (
+            <div className="text-center text-danger text-xs">
+              {((create.error ?? build.error) as Error | null)?.message}
+            </div>
           )}
-          {notice && <div className="text-center text-warn text-xs">{notice}</div>}
         </section>
 
         {/* Existing decks */}

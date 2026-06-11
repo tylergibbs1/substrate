@@ -92,9 +92,6 @@ export function DeckBar({ detail }: { detail: DeckDetail }) {
           <Chip className="capitalize shrink-0">
             {detail.deck.designPresetId}
           </Chip>
-          <span className="truncate mono text-[10px] uppercase tracking-wider text-fg-faint/70 group-hover:text-fg-faint">
-            design · injected ahead of every slide
-          </span>
         </button>
 
         {/* Quiet status rail — one line, chrome that recedes (§7.3). */}

@@ -49,6 +49,9 @@ export interface ProviderShape {
   /** Short display titles for slide prompts, batched into one call. Same length
    *  and order as the input. Uses the cheap title model; mock derives them locally. */
   readonly titles: (prompts: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<string>, ProviderError>;
+  /** Compile a DESIGN.md / design-system spec into one concise image-model design
+   *  prompt (the deck's main design prompt). Mock distills it locally. */
+  readonly designPrompt: (source: string) => Effect.Effect<string, ProviderError>;
 }
 
 export class Provider extends Context.Service<Provider, ProviderShape>()("substrate/Provider") {}
@@ -249,6 +252,24 @@ const openaiRender = (apiKey: string, imageModel: string, input: RenderInput): E
     catch: (cause) => new ProviderError({ message: cause instanceof Error ? cause.message : String(cause) }),
   });
 
+/** Extract assistant text from an OpenAI /v1/responses payload. The raw HTTP JSON
+ *  has NO top-level `output_text` (that's a client-SDK convenience) — the text is
+ *  in output[].content[] message items. Used by outline, titles, and design compile. */
+function responseText(json: {
+  output_text?: string;
+  output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
+}): string {
+  if (typeof json.output_text === "string" && json.output_text.trim()) return json.output_text;
+  const parts: Array<string> = [];
+  for (const item of json.output ?? []) {
+    if (item?.type !== "message") continue;
+    for (const c of item.content ?? []) {
+      if ((c?.type === "output_text" || c?.type === "text") && typeof c.text === "string") parts.push(c.text);
+    }
+  }
+  return parts.join("");
+}
+
 const openaiOutline = (
   apiKey: string,
   textModel: string,
@@ -273,8 +294,8 @@ const openaiOutline = (
         }),
       });
       if (!res.ok) throw new Error(`Outline generation failed (${res.status}): ${await res.text()}`);
-      const json = (await res.json()) as { output_text?: string };
-      return safeParseArray(json.output_text ?? "[]").slice(0, count);
+      const json = (await res.json()) as Parameters<typeof responseText>[0];
+      return safeParseArray(responseText(json) || "[]").slice(0, count);
     },
     catch: (cause) => new ProviderError({ message: cause instanceof Error ? cause.message : String(cause) }),
   });
@@ -302,10 +323,50 @@ const openaiTitles = (
         }),
       });
       if (!res.ok) throw new Error(`Title generation failed (${res.status}): ${await res.text()}`);
-      const json = (await res.json()) as { output_text?: string };
-      const parsed = safeParseArray(json.output_text ?? "[]");
+      const json = (await res.json()) as Parameters<typeof responseText>[0];
+      const parsed = safeParseArray(responseText(json) || "[]");
       // Fall back to a derived title for any item the model dropped, keeping order.
       return prompts.map((p, i) => (typeof parsed[i] === "string" && parsed[i].trim() ? parsed[i] : deriveSlideTitle(p)));
+    },
+    catch: (cause) => new ProviderError({ message: cause instanceof Error ? cause.message : String(cause) }),
+  });
+
+/** Local distillation when running on the mock provider: strip frontmatter and
+ *  markdown noise, keep the first couple of prose paragraphs as a usable prompt. */
+function mockDesignPrompt(source: string): string {
+  const body = source
+    .replace(/^---[\s\S]*?---/, "")
+    .replace(/`{1,3}/g, "")
+    .replace(/^[#>*-]+\s?/gm, "")
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+    .trim();
+  const text = body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).slice(0, 3).join(" ").replace(/\s+/g, " ");
+  return (text || "A clean, modern slide design.").slice(0, 700);
+}
+
+const openaiDesignPrompt = (apiKey: string, textModel: string, source: string): Effect.Effect<string, ProviderError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const res = await fetch(`${API_BASE}/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: textModel,
+          input: [
+            {
+              role: "system",
+              content:
+                "You convert a design-system spec (a DESIGN.md or design documentation) into ONE concise visual design prompt for an AI IMAGE model that renders slide-deck slides. Capture the palette (named colors + mood), typography feel, layout/composition, signature motifs, and overall aesthetic in vivid, concrete language the image model can follow. 90-140 words. Output ONLY the prompt text — no preamble, headings, or markdown.",
+            },
+            { role: "user", content: source.slice(0, 12000) },
+          ],
+        }),
+      });
+      if (!res.ok) throw new Error(`Design compile failed (${res.status}): ${await res.text()}`);
+      const json = (await res.json()) as Parameters<typeof responseText>[0];
+      const out = responseText(json).trim();
+      if (!out) throw new Error("empty design prompt from model");
+      return out;
     },
     catch: (cause) => new ProviderError({ message: cause instanceof Error ? cause.message : String(cause) }),
   });
@@ -331,6 +392,10 @@ const make = Effect.gen(function* () {
         s.usingMock
           ? Effect.sync(() => prompts.map(deriveSlideTitle))
           : openaiTitles(s.openaiApiKey, s.titleModel, prompts),
+      ),
+    designPrompt: (source) =>
+      Effect.flatMap(settings.resolve, (s) =>
+        s.usingMock ? Effect.sync(() => mockDesignPrompt(source)) : openaiDesignPrompt(s.openaiApiKey, s.textModel, source),
       ),
   };
   return shape;

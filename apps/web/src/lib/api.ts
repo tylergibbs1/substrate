@@ -66,8 +66,12 @@ export interface Variation {
 export const api = {
   status: () => req<ServerStatus>("/api/status"),
   settings: () => req<ServerSettings>("/api/settings"),
-  setApiKey: (openaiApiKey: string | null) =>
-    req<ServerSettings>("/api/settings", { method: "POST", body: JSON.stringify({ openaiApiKey }) }),
+  updateSettings: (patch: {
+    openaiApiKey?: string | null;
+    anthropicApiKey?: string | null;
+    agentProvider?: "anthropic" | "openai";
+    agentModel?: string;
+  }) => req<ServerSettings>("/api/settings", { method: "POST", body: JSON.stringify(patch) }),
   presets: () => req<DesignPreset[]>("/api/presets"),
   decks: () => req<DeckSummary[]>("/api/decks"),
   deck: (id: string) => req<DeckDetail>(`/api/decks/${id}`),
@@ -77,8 +81,24 @@ export const api = {
 
   // Create an empty deck and let an OpenAI agent fill it from a description; the
   // editor shows slides appear and render live. Returns the new deck id at once.
-  buildDeck: (body: { description: string; aspectRatio?: AspectRatio; designPresetId?: string }) =>
+  buildDeck: (body: { description: string; aspectRatio?: AspectRatio; designPresetId?: string; designPrompt?: string }) =>
     req<{ deckId: string }>("/api/decks/build", { method: "POST", body: JSON.stringify(body) }),
+
+  // The Assistant: the agent applies a follow-up tweak to an existing deck and
+  // reports the edits it made (which also stream into the editor live).
+  reviseDeck: (deckId: string, instruction: string) =>
+    req<{ actions: string[]; text: string }>(`/api/decks/${deckId}/revise`, {
+      method: "POST",
+      body: JSON.stringify({ instruction }),
+    }),
+
+  // The getdesign.md collection, resolved server-side so the user picks in-app.
+  designRegistry: () => req<Array<{ slug: string; name: string }>>("/api/design/registry"),
+
+  // Compile a DESIGN.md (a getdesign.md slug, a URL, or pasted text) into a deck
+  // main design prompt the image model can follow.
+  compileDesign: (source: string) =>
+    req<{ designPrompt: string }>("/api/design/compile", { method: "POST", body: JSON.stringify({ source }) }),
 
   setDesignPrompt: (deckId: string, designPrompt: string, mode: EditMode) =>
     req<{ applied: boolean; editId: string; affectedSlides: number }>(`/api/decks/${deckId}/design`, {

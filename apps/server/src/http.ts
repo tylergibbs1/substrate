@@ -19,7 +19,7 @@ import {
   ReorderRequest,
   ResolveEditRequest,
   ReviewModeRequest,
-  SetApiKeyRequest,
+  UpdateSettingsRequest,
   SetDesignPromptRequest,
   VariationsRequest,
   type AspectRatio,
@@ -30,7 +30,8 @@ import { config } from "./Config.ts";
 import { blobExists, blobPath } from "./util.ts";
 import { buildMcpServer } from "./mcp-server.ts";
 import { Decks } from "./Decks.ts";
-import { buildDeckInto } from "./DeckAgent.ts";
+import { buildDeckInto, reviseDeck } from "./DeckAgent.ts";
+import { resolveDesignSource, designRegistry } from "./DesignImport.ts";
 import { Provider } from "./Provider.ts";
 import { Generation } from "./Generation.ts";
 import { Events } from "./Events.ts";
@@ -168,10 +169,10 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
   }
   if (p === "/api/settings" && method === "POST") {
     const body = await readBody(req);
-    // Persist the key (or clear it), then return the fresh masked view so the UI
-    // reflects the live provider immediately.
-    const view = await decodeAnd(SetApiKeyRequest, body, (b) =>
-      Effect.flatMap(Settings, (s) => Effect.flatMap(s.setApiKey(b.openaiApiKey), () => s.view)),
+    // Merge the patch (keys, agent provider/model), then return the fresh view so
+    // the UI reflects the live config immediately — no restart.
+    const view = await decodeAnd(UpdateSettingsRequest, body, (b) =>
+      Effect.flatMap(Settings, (s) => Effect.flatMap(s.update(b), () => s.view)),
     );
     return json(res, 200, view);
   }
@@ -192,21 +193,60 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     );
     return json(res, 201, result);
   }
+  if (p === "/api/design/registry" && method === "GET") {
+    // The in-app getdesign.md picker (so the user never leaves the app).
+    return json(res, 200, designRegistry());
+  }
+  if (p === "/api/design/compile" && method === "POST") {
+    // Import a DESIGN.md (pasted text or a URL) → one image-model design prompt.
+    const body = (await readBody(req)) as { source?: string };
+    const raw = (body.source ?? "").trim();
+    if (!raw) return json(res, 400, { error: "source required" });
+    try {
+      const text = await resolveDesignSource(raw);
+      const designPrompt = await run(Effect.flatMap(Decks, (d) => d.compileDesign(text)));
+      return json(res, 200, { designPrompt });
+    } catch (e) {
+      return json(res, 502, { error: e instanceof Error ? e.message : "design compile failed" });
+    }
+  }
   if (p === "/api/decks/build" && method === "POST") {
-    const body = (await readBody(req)) as { description?: string; aspectRatio?: AspectRatio; designPresetId?: string };
+    const body = (await readBody(req)) as {
+      description?: string;
+      aspectRatio?: AspectRatio;
+      designPresetId?: string;
+      designPrompt?: string;
+    };
     const description = (body.description ?? "").trim();
     if (!description) return json(res, 400, { error: "description required" });
     const resolved = await run(Effect.flatMap(Settings, (s) => s.resolve));
-    if (resolved.usingMock) return json(res, 400, { error: "Set an OpenAI API key to build with the agent." });
+    // Rendering always needs an OpenAI key (gpt-image-2); the agent additionally
+    // needs its provider's key (Anthropic Claude by default) — all set in Settings.
+    if (resolved.usingMock) return json(res, 400, { error: "Add an OpenAI API key in Settings to render slides." });
+    if (resolved.agentProvider === "anthropic" && !resolved.anthropicApiKey) {
+      return json(res, 400, { error: "Add an Anthropic API key in Settings to build with the agent (Claude), or switch the agent to OpenAI in Settings." });
+    }
     // Create the deck now and return its id immediately; the agent fills it with
     // slides in the background, which the editor shows appearing/rendering live.
     const title = description.split(/\s+/).slice(0, 6).join(" ").slice(0, 60) || "Untitled deck";
     const { deckId } = await run(
       Effect.flatMap(Decks, (d) =>
-        d.createDeck({ title, aspectRatio: body.aspectRatio ?? "16:9", designPresetId: body.designPresetId }),
+        d.createDeck({
+          title,
+          aspectRatio: body.aspectRatio ?? "16:9",
+          designPresetId: body.designPresetId,
+          designPrompt: body.designPrompt,
+        }),
       ),
     );
-    void buildDeckInto({ deckId, description, apiKey: resolved.openaiApiKey }).catch((e) =>
+    void buildDeckInto({
+      deckId,
+      description,
+      provider: resolved.agentProvider,
+      model: resolved.agentModel,
+      openaiApiKey: resolved.openaiApiKey,
+      anthropicApiKey: resolved.anthropicApiKey,
+    }).catch((e) =>
       runtime.runFork(Effect.logError(`deck-builder agent failed for ${deckId}`, e)),
     );
     return json(res, 201, { deckId });
@@ -228,6 +268,34 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
           Effect.flatMap(Decks, (d) => d.setDesignPrompt(deckId, b.designPrompt, b.mode ?? "direct", b.author, b.note)),
         ),
       );
+    }
+    if (sub === "revise" && method === "POST") {
+      // The in-app "Assistant": the agent applies a follow-up tweak to this deck.
+      // Edits stream to the editor live; in review mode they land as proposals.
+      const body = (await readBody(req)) as { instruction?: string };
+      const instruction = (body.instruction ?? "").trim();
+      if (!instruction) return json(res, 400, { error: "instruction required" });
+      const resolved = await run(Effect.flatMap(Settings, (s) => s.resolve));
+      if (resolved.usingMock) return json(res, 400, { error: "Add an OpenAI API key in Settings to render slides." });
+      if (resolved.agentProvider === "anthropic" && !resolved.anthropicApiKey) {
+        return json(res, 400, { error: "Add an Anthropic API key in Settings to use the assistant (Claude), or switch the agent to OpenAI in Settings." });
+      }
+      try {
+        return json(
+          res,
+          200,
+          await reviseDeck({
+            deckId,
+            instruction,
+            provider: resolved.agentProvider,
+            model: resolved.agentModel,
+            openaiApiKey: resolved.openaiApiKey,
+            anthropicApiKey: resolved.anthropicApiKey,
+          }),
+        );
+      } catch (e) {
+        return json(res, 502, { error: e instanceof Error ? e.message : "assistant failed" });
+      }
     }
     if (sub === "slides" && method === "POST") {
       const body = await readBody(req);
