@@ -30,7 +30,7 @@ import { config } from "./Config.ts";
 import { blobExists, blobPath } from "./util.ts";
 import { buildMcpServer } from "./mcp-server.ts";
 import { Decks } from "./Decks.ts";
-import { buildDeckInto, reviseDeck } from "./DeckAgent.ts";
+import { buildDeckInto, reviseDeck, polishDeck } from "./DeckAgent.ts";
 import { resolveDesignSource, designRegistry } from "./DesignImport.ts";
 import { Provider } from "./Provider.ts";
 import { Generation } from "./Generation.ts";
@@ -215,18 +215,25 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       aspectRatio?: AspectRatio;
       designPresetId?: string;
       designPrompt?: string;
-      contextPath?: string;
+      contextPaths?: string[];
+      contextPath?: string; // legacy single-path form
     };
     const description = (body.description ?? "").trim();
     if (!description) return json(res, 400, { error: "description required" });
-    // Optional file context the agent may explore (read-only, sandboxed server-side).
-    // Validate synchronously up front so a bad path fails the request, not silently.
-    const contextPath = typeof body.contextPath === "string" ? body.contextPath.trim() : "";
-    if (contextPath) {
+    // Optional file context (one or more dirs/files) the agent may explore
+    // (read-only, sandboxed server-side). Validate each up front so a bad path
+    // fails the request rather than silently dropping.
+    const rawPaths = Array.isArray(body.contextPaths)
+      ? body.contextPaths
+      : typeof body.contextPath === "string"
+        ? [body.contextPath]
+        : [];
+    const contextPaths = rawPaths.map((p) => (typeof p === "string" ? p.trim() : "")).filter(Boolean);
+    for (const cp of contextPaths) {
       try {
-        fs.statSync(contextPath);
+        fs.statSync(cp);
       } catch {
-        return json(res, 400, { error: "That context path doesn't exist or isn't readable." });
+        return json(res, 400, { error: `That context path doesn't exist or isn't readable: ${cp}` });
       }
     }
     const resolved = await run(Effect.flatMap(Settings, (s) => s.resolve));
@@ -236,6 +243,10 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     if (resolved.agentProvider === "anthropic" && !resolved.anthropicApiKey) {
       return json(res, 400, { error: "Add an Anthropic API key in Settings to build with the agent (Claude), or switch the agent to OpenAI in Settings." });
     }
+    // A user-chosen design (a preset, or a Custom/DESIGN.md prompt) is LOCKED: the
+    // agent builds within it and can't replace it. Leaving Custom blank sends
+    // neither, which is the natural "let the agent design it" path (unlocked).
+    const lockDesign = !!body.designPresetId || !!(typeof body.designPrompt === "string" && body.designPrompt.trim());
     // Create the deck now and return its id immediately; the agent fills it with
     // slides in the background, which the editor shows appearing/rendering live.
     const title = description.split(/\s+/).slice(0, 6).join(" ").slice(0, 60) || "Untitled deck";
@@ -257,26 +268,65 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     // Bracket the whole run so the feed/working state spans it (not the 4s edge).
     const emitRun = (active: boolean) =>
       void run(Effect.flatMap(Events, (e) => e.publish({ type: "agent-run", deckId, active })));
-    emitRun(true);
-    void buildDeckInto({
-      deckId,
-      description,
-      ...(contextPath ? { contextPath } : {}),
+    // Wait until every slide reaches a terminal render state (or a timeout), so
+    // the polish pass can actually SEE the renders.
+    const waitForDeckRenders = async (timeoutMs = 120000): Promise<void> => {
+      const terminal = new Set(["done", "error"]);
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const detail = await run(Effect.flatMap(Decks, (d) => d.getDeckDetail(deckId)));
+        if (!detail || detail.slides.length === 0) return;
+        if (detail.slides.every((s) => s.jobStatus != null && terminal.has(s.jobStatus))) return;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    };
+    const agentCfg = {
       provider: resolved.agentProvider,
       model: resolved.agentModel,
       openaiApiKey: resolved.openaiApiKey,
       anthropicApiKey: resolved.anthropicApiKey,
-      onStep: emitStep,
-    })
-      .then((r) => {
-        // Surface a half-built deck instead of leaving the user staring at gaps.
-        if (r.truncated) void buildError("The agent stopped before finishing — the deck may be incomplete. Use the Assistant to continue.");
-      })
-      .catch((e) => {
-        runtime.runFork(Effect.logError(`deck-builder agent failed for ${deckId}`, e));
-        void buildError(e instanceof Error ? e.message : "The agent failed to build this deck.");
-      })
-      .finally(() => emitRun(false));
+    };
+    emitRun(true);
+    void (async () => {
+      try {
+        // The build itself: a failure here IS a build failure the user should see.
+        try {
+          const r = await buildDeckInto({
+            deckId,
+            description,
+            lockDesign,
+            ...(contextPaths.length ? { contextPaths } : {}),
+            ...agentCfg,
+            onStep: emitStep,
+          });
+          if (r.truncated) {
+            void buildError("The agent stopped before finishing — the deck may be incomplete. Use the Assistant to continue.");
+            return;
+          }
+        } catch (e) {
+          runtime.runFork(Effect.logError(`deck-builder agent failed for ${deckId}`, e));
+          void buildError(e instanceof Error ? e.message : "The agent failed to build this deck.");
+          return;
+        }
+        // Close the agent's loop with a BEST-EFFORT vision polish pass on the
+        // finished, persisted deck. Its failures are logged, NEVER surfaced as a
+        // build error — the deck is already complete and rendered.
+        try {
+          emitStep("Rendering the deck", null);
+          await waitForDeckRenders();
+          const detail = await run(Effect.flatMap(Decks, (d) => d.getDeckDetail(deckId)));
+          const rendered = detail?.slides.filter((s) => s.jobStatus === "done").length ?? 0;
+          if (rendered > 0) {
+            await polishDeck({ deckId, ...agentCfg, onStep: emitStep });
+            await waitForDeckRenders(); // let the polish's own fix re-renders finish
+          }
+        } catch (e) {
+          runtime.runFork(Effect.logError(`polish pass failed for ${deckId}`, e));
+        }
+      } finally {
+        emitRun(false);
+      }
+    })();
     return json(res, 201, { deckId });
   }
 

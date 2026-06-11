@@ -5,7 +5,8 @@ import { ApiKeyForm } from "./ApiKeyForm.js";
 
 /**
  * Settings modal — wraps the shared key form (ApiKeyForm) in dismissible chrome.
- * Reachable once a key is set (the first-run KeyGate handles the no-key case).
+ * Reachable any time from the picker or status rail; the contextual KeyPrompt
+ * covers the no-key case at the moment an action needs a key.
  */
 export function Settings() {
   const open = useEditor((s) => s.settingsOpen);

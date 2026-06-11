@@ -22,6 +22,7 @@
     "@substrate/shared": "workspace:*",
     "ai": "^6.0.201",
     "effect": "catalog:",
+    "pptxgenjs": "^4.0.1",
     "ws": "^8.18.0",
     "zod": "^4.4.3"
   },

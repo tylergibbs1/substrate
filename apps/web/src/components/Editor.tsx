@@ -8,6 +8,8 @@ import { Canvas } from "./Canvas.js";
 import { RightRail } from "./RightRail.js";
 import { DeckBar } from "./DeckBar.js";
 import { TopBar } from "./TopBar.js";
+import { OverviewGrid } from "./OverviewGrid.js";
+import { PresentMode } from "./PresentMode.js";
 import { Empty } from "../ui.js";
 
 function isTyping(el: EventTarget | null): boolean {
@@ -21,6 +23,8 @@ export function Editor({ deckId }: { deckId: string }) {
   const setActiveSlide = useEditor((s) => s.setActiveSlide);
   const paletteOpen = useEditor((s) => s.paletteOpen);
   const agentActivity = useEditor((s) => s.agentActivity);
+  const editorView = useEditor((s) => s.editorView);
+  const presenting = useEditor((s) => s.presenting);
   const actions = useSlideActions(deckId);
 
   // Auto-select the first slide when none is active.
@@ -60,16 +64,17 @@ export function Editor({ deckId }: { deckId: string }) {
 
   // The keyboard listener binds once; read the latest slides/actions through a
   // ref so it always acts on current state without re-registering every render.
-  const latest = useRef({ slides: deck.data?.slides ?? [], activeSlideId, paletteOpen, actions });
-  latest.current = { slides: deck.data?.slides ?? [], activeSlideId, paletteOpen, actions };
+  const latest = useRef({ slides: deck.data?.slides ?? [], activeSlideId, paletteOpen, presenting, actions });
+  latest.current = { slides: deck.data?.slides ?? [], activeSlideId, paletteOpen, presenting, actions };
 
   // Keyboard-primary navigation + actions (Linear pattern). Single-letter keys
   // only fire when not typing and the palette is closed. Actions route through
   // the shared mutations — optimistic, deduped, errors not swallowed.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const { slides, activeSlideId: cur, paletteOpen: open, actions: act } = latest.current;
-      if (open || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+      const { slides, activeSlideId: cur, paletteOpen: open, presenting: show, actions: act } = latest.current;
+      // Present mode owns the keyboard while it's up; don't also move the editor.
+      if (show || open || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (slides.length === 0 && e.key !== "n" && e.key !== "N") return;
       const ids = slides.map((s) => s.id);
       const curId = cur ?? ids[0] ?? null;
@@ -103,18 +108,26 @@ export function Editor({ deckId }: { deckId: string }) {
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <TopBar detail={detail} />
-      <div className="flex-1 min-h-0 grid grid-cols-[260px_1fr_300px]">
-        <div className="min-h-0 border-r border-line bg-ink-1">
-          <SlideRail detail={detail} />
+      {editorView === "grid" ? (
+        // Full-width overview so the whole deck is visible at once.
+        <div className="flex-1 min-h-0 bg-ink-0">
+          <OverviewGrid detail={detail} />
         </div>
-        <div className="min-h-0 bg-ink-0">
-          <Canvas detail={detail} slide={slide} />
+      ) : (
+        <div className="flex-1 min-h-0 grid grid-cols-[260px_1fr_300px]">
+          <div className="min-h-0 border-r border-line bg-ink-1">
+            <SlideRail detail={detail} />
+          </div>
+          <div className="min-h-0 bg-ink-0">
+            <Canvas detail={detail} slide={slide} />
+          </div>
+          <div className="min-h-0 border-l border-line bg-ink-1">
+            <RightRail detail={detail} slide={slide} />
+          </div>
         </div>
-        <div className="min-h-0 border-l border-line bg-ink-1">
-          <RightRail detail={detail} slide={slide} />
-        </div>
-      </div>
+      )}
       <DeckBar detail={detail} />
+      {presenting && <PresentMode detail={detail} />}
     </div>
   );
 }

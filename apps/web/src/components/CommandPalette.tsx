@@ -32,6 +32,9 @@ export function CommandPalette() {
   const setShowDesignEditor = useEditor((s) => s.setShowDesignEditor);
   const setConnectOpen = useEditor((s) => s.setConnectOpen);
   const setSettingsOpen = useEditor((s) => s.setSettingsOpen);
+  const editorView = useEditor((s) => s.editorView);
+  const setEditorView = useEditor((s) => s.setEditorView);
+  const setPresenting = useEditor((s) => s.setPresenting);
 
   const [query, setQuery] = useState("");
   const [sel, setSel] = useState(0);
@@ -64,6 +67,8 @@ export function CommandPalette() {
       slideId ? { id: "variations", label: "Variations of current slide", group: "Actions", hint: "V", run: wrap(() => actions.variations.mutate({ slideId })) } : null,
       slideId ? { id: "reseed", label: "Reseed current slide", group: "Actions", run: wrap(() => actions.regenerate.mutate({ slideId, reseed: true })) } : null,
       { id: "new", label: "New slide", group: "Actions", hint: "N", run: wrap(() => actions.addSlide.mutate()) },
+      detail.slides.length > 0 ? { id: "present", label: "Present deck (fullscreen)", group: "Actions", run: wrap(() => setPresenting(true)) } : null,
+      { id: "overview", label: editorView === "grid" ? "Back to single slide" : "Overview — all slides at once", group: "Actions", run: wrap(() => setEditorView(editorView === "grid" ? "canvas" : "grid")) },
       { id: "review", label: `${detail.deck.reviewMode ? "Disable" : "Enable"} review mode`, group: "Actions", run: wrap(() => review.mutate()) },
       { id: "design", label: "Edit main design prompt", group: "Actions", run: wrap(() => setShowDesignEditor(true)) },
       { id: "export", label: "Export deck as PNG", group: "Actions", run: wrap(() => doExport.mutate()) },
@@ -79,7 +84,7 @@ export function CommandPalette() {
       run: wrap(() => setActiveSlide(s.id)),
     }));
     return [...actionList, ...slides];
-  }, [detail, slideId, slide]);
+  }, [detail, slideId, slide, editorView]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

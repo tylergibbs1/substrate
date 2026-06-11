@@ -26,7 +26,12 @@ import { Sqlite } from "./Sqlite.ts";
 import { Provider, type ProviderError } from "./Provider.ts";
 import { Generation } from "./Generation.ts";
 import { Events } from "./Events.ts";
+import { createRequire } from "node:module";
 import { blobPath, hash, id, newSeed, now, writeBlob } from "./util.ts";
+
+// pptxgenjs is a dual package whose ESM build trips NodeNext resolution; load its
+// CJS build directly so `new PptxGenJS()` is constructable at runtime + typed.
+const PptxGenJS = createRequire(import.meta.url)("pptxgenjs") as typeof import("pptxgenjs").default;
 
 /**
  * The built-in demo deck (PRD-style onboarding). Seeded on first launch with the
@@ -224,6 +229,54 @@ function buildExportFiles(detail: DeckDetail, format: ExportFormat): ExportBundl
   return note === undefined ? { files, suggestedName } : { files, note, suggestedName };
 }
 
+/** Slide dimensions in inches by aspect (16:9 wide, 4:3, square). */
+function pptxDims(aspect: DeckDetail["deck"]["aspectRatio"]): { w: number; h: number } {
+  if (aspect === "4:3") return { w: 10, h: 7.5 };
+  if (aspect === "1:1") return { w: 7.5, h: 7.5 };
+  return { w: 13.333, h: 7.5 };
+}
+
+/** Package a deck as a REAL .pptx: each slide's rendered image full-bleed, and the
+ *  slide's PROMPT (its editable text-of-record) in that slide's speaker notes.
+ *  Returns the blob ref of the written .pptx. */
+async function buildPptx(detail: DeckDetail): Promise<string> {
+  const pptx = new PptxGenJS();
+  pptx.title = detail.deck.title;
+  const dims = pptxDims(detail.deck.aspectRatio);
+  pptx.defineLayout({ name: "substrate", width: dims.w, height: dims.h });
+  pptx.layout = "substrate";
+  for (const slide of detail.slides) {
+    const s = pptx.addSlide();
+    if (slide.imageBlobRef && fs.existsSync(blobPath(slide.imageBlobRef))) {
+      const ext = (slide.imageBlobRef.split(".").pop() ?? "png").toLowerCase();
+      const b64 = fs.readFileSync(blobPath(slide.imageBlobRef)).toString("base64");
+      s.addImage({ data: `data:image/${ext};base64,${b64}`, x: 0, y: 0, w: dims.w, h: dims.h });
+    }
+    // The prompt IS the slide (its substrate) — keep it with the slide, in its
+    // notes. Strip XML-1.0-illegal control chars so a stray byte can't corrupt
+    // the whole .pptx (pptxgenjs escapes metachars but not these).
+    // eslint-disable-next-line no-control-regex -- intentionally stripping XML-illegal control chars
+    s.addNotes(slide.prompt.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ""));
+  }
+  const buf = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
+  // Content-address the .pptx so re-exporting the same deck reuses one blob
+  // instead of orphaning a new multi-MB file on every export.
+  const ref = `pptx_${hash(buf.toString("latin1"))}.pptx`;
+  if (!fs.existsSync(blobPath(ref))) fs.writeFileSync(blobPath(ref), buf);
+  return ref;
+}
+
+/** One async bundle builder: a real single-file .pptx for pptx, else the
+ *  image-bundle + notes.md files (png/pdf). */
+async function buildExportBundle(detail: DeckDetail, format: ExportFormat): Promise<ExportBundle> {
+  if (format === "pptx") {
+    const safe = detail.deck.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "deck";
+    const blobRef = await buildPptx(detail);
+    return { files: [{ name: `${safe}.pptx`, blobRef }], suggestedName: `${safe}-pptx` };
+  }
+  return buildExportFiles(detail, format);
+}
+
 const make = Effect.gen(function* () {
   const sql = yield* Sqlite;
   const provider = yield* Provider;
@@ -250,7 +303,8 @@ const make = Effect.gen(function* () {
   if ((deckCount?.c ?? 0) === 0 && fs.existsSync(path.join(DEMO_DIR, "01.png"))) {
     yield* sql.sync((db) => {
       const applePrompt = DESIGN_PRESETS.find((p) => p.id === "apple")!.designPrompt;
-      const deckId = id("deck");
+      // Stable id so the web app can open the demo deck first for new users.
+      const deckId = "deck-demo";
       db.prepare(
         "INSERT INTO decks (id, title, aspect_ratio, design_preset_id, main_design_prompt, review_mode, created_at) VALUES (?, ?, '16:9', 'apple', ?, 0, ?)",
       ).run(deckId, "Welcome to Substrate", applePrompt, now());
@@ -682,8 +736,8 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const detail = yield* getDeckDetail(deckId);
       if (!detail) return yield* die(`deck not found: ${deckId}`);
-      return yield* sql.sync(() => {
-        const { files, note, suggestedName } = buildExportFiles(detail, format);
+      const { files, note, suggestedName } = yield* Effect.promise(() => buildExportBundle(detail, format));
+      return yield* Effect.sync(() => {
         const dir = path.join(DATA_DIR, "exports", `${suggestedName}-${now()}`);
         fs.mkdirSync(dir, { recursive: true });
         for (const f of files) {
@@ -698,7 +752,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const detail = yield* getDeckDetail(deckId);
       if (!detail) return yield* die(`deck not found: ${deckId}`);
-      return buildExportFiles(detail, format);
+      return yield* Effect.promise(() => buildExportBundle(detail, format));
     });
 
   const ensureTitles: DecksShape["ensureTitles"] = (deckId) =>

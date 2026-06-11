@@ -40,6 +40,22 @@ async function fileBytes(file: ExportFile): Promise<Blob> {
  * browser downloads where it is unavailable. Must be called from a user gesture.
  */
 export async function downloadDeckExport(deckId: string, format: ExportFormat): Promise<ExportResult> {
+  // Desktop (Electron): the File System Access write picker isn't available, so
+  // go through the native save-to-folder bridge (a real destination dialog).
+  const native = window.substrate?.saveExport;
+  if (native) {
+    const manifest = await api.exportManifest(deckId, format);
+    const files = await Promise.all(
+      manifest.files.map(async (file) => ({
+        name: file.name,
+        data: new Uint8Array(await (await fileBytes(file)).arrayBuffer()),
+      })),
+    );
+    const dest = await native({ suggestedName: manifest.suggestedName, files });
+    if (dest === null) throw new ExportCancelled();
+    return manifest.note === undefined ? { destination: dest } : { destination: dest, note: manifest.note };
+  }
+
   const picker = window.showDirectoryPicker;
 
   if (picker) {
