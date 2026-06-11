@@ -25,10 +25,20 @@ const iconPath = path.join(__dirname, "build/icon-512.png");
 
 function startServer() {
   if (isDev) return; // dev runs the server via `pnpm dev:server`
-  // Node 24 runs TypeScript natively, so the server entry is its .ts source.
-  serverProc = spawn(process.execPath, [path.join(__dirname, "../server/src/index.ts")], {
+  // Packaged: run the bundled server (a single self-contained .mjs) with Electron
+  // as Node (ELECTRON_RUN_AS_NODE) — Electron's Node 24 has node:sqlite built in.
+  // The web build + demo renders ship as extraResources; point the server at them.
+  const res = process.resourcesPath;
+  const port = process.env.SUBSTRATE_PORT ?? "4321";
+  serverProc = spawn(process.execPath, [path.join(res, "server", "server.mjs")], {
     stdio: "inherit",
-    env: process.env,
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      SUBSTRATE_PORT: port,
+      SUBSTRATE_WEB_DIST: path.join(res, "web"),
+      SUBSTRATE_DEMO_DIR: path.join(res, "demo"),
+    },
   });
 }
 

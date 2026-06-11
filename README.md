@@ -24,11 +24,34 @@ The stack and conventions are modeled on
 contracts, `tsgo` typechecking via a pnpm `catalog:`, and a React 19 + Vite +
 Tailwind v4 + Base UI web app. See `AGENTS.md` and `docs/ARCHITECTURE.md`.
 
-## Quick start
+## Download
+
+Grab the latest desktop build from
+[GitHub Releases](https://github.com/tylergibbs1/substrate/releases):
+
+- **macOS** — `Substrate-*.dmg` (Apple Silicon)
+- **Windows** — `Substrate-Setup-*.exe`
+- **Linux** — `Substrate-*.AppImage`
+
+> Builds are currently **unsigned**, so the OS will warn about an unidentified
+> developer (macOS: right-click → Open; Windows: More info → Run anyway). Add your
+> OpenAI API key in-app to render with GPT Image 2, or use the offline preview.
+
+Maintainers cut a release by pushing a tag (`git tag v0.3.0 && git push --tags`):
+it builds installers for all three platforms and publishes them to the Release
+(see `.github/workflows/release.yml`).
+
+## Quick start (from source)
 
 ```bash
 pnpm install
 pnpm dev            # starts the server (:4321) and the web editor (:5173)
+```
+
+To produce a packaged desktop build locally:
+
+```bash
+pnpm dist           # build web + bundle the server + electron-builder → apps/desktop/dist
 ```
 
 Open http://localhost:5173, pick a design (Apple-style is the default), type a

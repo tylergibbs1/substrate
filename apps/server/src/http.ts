@@ -95,7 +95,9 @@ const decodeAnd = <S extends Schema.Top, A, E>(
  * relative `/api`, `/blobs`, `/ws` calls working in a packaged build instead of
  * breaking under `file://`. No-op (returns false) when the build is absent (dev).
  */
-const WEB_DIST = path.resolve(import.meta.dirname, "../../web/dist");
+// In a packaged desktop build the web bundle lives in app resources, not next to
+// the server source — the Electron shell points us at it via SUBSTRATE_WEB_DIST.
+const WEB_DIST = process.env.SUBSTRATE_WEB_DIST ?? path.resolve(import.meta.dirname, "../../web/dist");
 const STATIC_TYPES: Record<string, string> = {
   html: "text/html; charset=utf-8",
   js: "text/javascript",

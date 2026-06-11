@@ -26,19 +26,15 @@ import { Sqlite } from "./Sqlite.ts";
 import { Provider, type ProviderError } from "./Provider.ts";
 import { Generation } from "./Generation.ts";
 import { Events } from "./Events.ts";
-import { createRequire } from "node:module";
 import { blobPath, hash, id, newSeed, now, writeBlob } from "./util.ts";
-
-// pptxgenjs is a dual package whose ESM build trips NodeNext resolution; load its
-// CJS build directly so `new PptxGenJS()` is constructable at runtime + typed.
-const PptxGenJS = createRequire(import.meta.url)("pptxgenjs") as typeof import("pptxgenjs").default;
 
 /**
  * The built-in demo deck (PRD-style onboarding). Seeded on first launch with the
  * real GPT Image 2 renders bundled under assets/demo, so every user opens the
  * app to a finished Apple-style example — no API key required to see how it works.
  */
-const DEMO_DIR = path.resolve(import.meta.dirname, "../assets/demo");
+// Packaged builds ship the demo renders in app resources (see SUBSTRATE_WEB_DIST).
+const DEMO_DIR = process.env.SUBSTRATE_DEMO_DIR ?? path.resolve(import.meta.dirname, "../assets/demo");
 const DEMO_SLIDES: ReadonlyArray<string> = [
   'Title slide. Enormous bold centered wordmark "Substrate" in crisp black on a near-white background. Small subtitle below in muted grey: "The prompt is the only editable artifact." Vast whitespace.',
   'A single bold statement, left-aligned, large type: "An image model returns pixels." Below in smaller muted text: "Pixels can\'t be diffed, reviewed, or co-authored." Minimal, one idea.',
@@ -240,6 +236,9 @@ function pptxDims(aspect: DeckDetail["deck"]["aspectRatio"]): { w: number; h: nu
  *  slide's PROMPT (its editable text-of-record) in that slide's speaker notes.
  *  Returns the blob ref of the written .pptx. */
 async function buildPptx(detail: DeckDetail): Promise<string> {
+  // Dynamic import so esbuild can inline pptxgenjs into the bundled server (a
+  // static createRequire is opaque to the bundler); cast for the dual-package types.
+  const PptxGenJS = (await import("pptxgenjs")).default as unknown as typeof import("pptxgenjs").default;
   const pptx = new PptxGenJS();
   pptx.title = detail.deck.title;
   const dims = pptxDims(detail.deck.aspectRatio);
