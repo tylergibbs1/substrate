@@ -87,15 +87,22 @@ app.whenReady().then(async () => {
   // write the bundle with Node fs (honoring "always ask where to download").
   ipcMain.handle("substrate:saveExport", async (_e, payload) => {
     const win = BrowserWindow.getFocusedWindow();
+    // The renderer (a loopback http page) is untrusted: reduce every name to a
+    // bare basename and reject anything path-bearing, so a crafted name can never
+    // write outside the chosen folder. Writes are async to keep the UI responsive.
+    const safeName = (name) => {
+      const base = path.basename(String(name ?? ""));
+      return !base || base === "." || base === ".." || base !== String(name) ? null : base;
+    };
     // A single packaged file (e.g. .pptx) → save it directly with a Save-As dialog.
     if (payload.files.length === 1) {
       const file = payload.files[0];
       const result = await dialog.showSaveDialog(win ?? undefined, {
-        defaultPath: file.name,
+        defaultPath: safeName(file.name) ?? "export",
         message: "Save export",
       });
       if (result.canceled || !result.filePath) return null;
-      fs.writeFileSync(result.filePath, Buffer.from(file.data));
+      await fs.promises.writeFile(result.filePath, Buffer.from(file.data));
       return result.filePath;
     }
     // Several files → pick a destination folder and write the bundle into it.
@@ -104,10 +111,11 @@ app.whenReady().then(async () => {
       message: `Choose where to save "${payload.suggestedName}"`,
     });
     if (result.canceled || result.filePaths.length === 0) return null;
-    const dest = path.join(result.filePaths[0], payload.suggestedName);
-    fs.mkdirSync(dest, { recursive: true });
+    const dest = path.join(result.filePaths[0], safeName(payload.suggestedName) ?? "export");
+    await fs.promises.mkdir(dest, { recursive: true });
     for (const file of payload.files) {
-      fs.writeFileSync(path.join(dest, file.name), Buffer.from(file.data));
+      const base = safeName(file.name);
+      if (base) await fs.promises.writeFile(path.join(dest, base), Buffer.from(file.data));
     }
     return dest;
   });

@@ -35,12 +35,16 @@ export default function App() {
     if (id !== activeDeckId) setActiveDeck(id);
   }, [agentActivity?.deckId, activeDeckId, setActiveDeck]);
 
-  // ⌘K / Ctrl+K opens the command palette anywhere (keyboard-primary input).
+  // ⌘K / Ctrl+K opens the command palette anywhere (keyboard-primary input) —
+  // except while presenting, where it would open behind the fullscreen overlay.
+  const presenting = useEditor((s) => s.presenting);
+  const presentingRef = useRef(presenting);
+  presentingRef.current = presenting;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        togglePalette();
+        if (!presentingRef.current) togglePalette();
       }
     };
     window.addEventListener("keydown", onKey);

@@ -75,6 +75,9 @@ export interface FileContext {
    *  dir, or a 1-file scratch dir in single-file mode). Bounded output + group-
    *  killed timeout; unconfined (host-user authority). Never rejects. */
   run(command: string, timeoutMs?: number): Promise<string>;
+  /** Remove any temp dirs/symlinks this context created. Idempotent; safe to call
+   *  in a finally. Call once the build/revise run is done. */
+  dispose(): void;
 }
 
 /**
@@ -90,6 +93,8 @@ export function openFileContext(inputs: string[]): FileContext {
   if (reals.length === 0) throw new Error("No file-context paths provided.");
   // The containment set: a real path is in-bounds iff it's under one of these.
   const roots = reals.slice();
+  // Temp dirs we create (workspace + single-file scratch), removed by dispose().
+  const tempDirs: string[] = [];
 
   const single = reals.length === 1 ? reals[0]! : null;
   const singleIsDir = single ? fs.statSync(single).isDirectory() : false;
@@ -107,19 +112,18 @@ export function openFileContext(inputs: string[]): FileContext {
   } else {
     // Several inputs: a workspace of named symlinks, addressed as "<name>/...".
     const ws = fs.mkdtempSync(path.join(os.tmpdir(), "substrate-ctx-"));
-    const used = new Map<string, number>();
+    tempDirs.push(ws);
+    const allocated = new Set<string>();
     const names: string[] = [];
     for (const r of reals) {
+      // Collision-proof name against ALL allocated names (a raw basename can equal
+      // another input's auto-suffixed name), so no input is silently dropped.
       const base = path.basename(r) || "root";
-      const n = used.get(base) ?? 0;
-      used.set(base, n + 1);
-      const name = n > 0 ? `${base}-${n + 1}` : base;
-      try {
-        fs.symlinkSync(r, path.join(ws, name));
-        names.push(name);
-      } catch {
-        /* unlinkable input is skipped, not fatal */
-      }
+      let name = base;
+      for (let k = 2; allocated.has(name); k++) name = `${base}-${k}`;
+      allocated.add(name);
+      fs.symlinkSync(r, path.join(ws, name)); // throws → fail the request, never drop silently
+      names.push(name);
     }
     root = fs.realpathSync(ws); // canonicalize (e.g. macOS /var → /private/var)
     label = `${reals.length} attached folders: ${names.map((n) => `${n}/`).join(", ")}`;
@@ -133,12 +137,24 @@ export function openFileContext(inputs: string[]): FileContext {
   if (focusFile) {
     try {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "substrate-ctx-"));
+      tempDirs.push(dir);
       fs.symlinkSync(focusFile, path.join(dir, path.basename(focusFile)));
       runCwd = dir;
     } catch {
       runCwd = path.dirname(focusFile);
     }
   }
+
+  const dispose = (): void => {
+    for (const d of tempDirs) {
+      try {
+        fs.rmSync(d, { recursive: true, force: true });
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
+    tempDirs.length = 0;
+  };
 
   const isUnderOrEq = (base: string, p: string): boolean => {
     const r = path.relative(base, p);
@@ -426,7 +442,7 @@ export function openFileContext(inputs: string[]): FileContext {
     });
   };
 
-  return { root, label, focusFile, focusRel: focusFile ? path.relative(root, focusFile) : null, readFile, listDir, glob, grep, run };
+  return { root, label, focusFile, focusRel: focusFile ? path.relative(root, focusFile) : null, readFile, listDir, glob, grep, run, dispose };
 }
 
 /** Minimal glob → RegExp: supports `**` (across dirs), `*` (within a segment),

@@ -296,7 +296,7 @@ export function DeckPicker() {
                       go();
                     }
                   }}
-                  disabled={create.isPending || build.isPending || (useAgent && !topic.trim()) || (isDesignMd && !mdSlug)}
+                  disabled={!settings.data || create.isPending || build.isPending || (useAgent && !topic.trim()) || (isDesignMd && !mdSlug)}
                   title={useAgent ? "An agent designs and writes every slide from your description" : "Create a blank deck and build the slides yourself"}
                   className="min-w-[148px] justify-center"
                 >

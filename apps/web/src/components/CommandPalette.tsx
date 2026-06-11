@@ -67,7 +67,7 @@ export function CommandPalette() {
       slideId ? { id: "variations", label: "Variations of current slide", group: "Actions", hint: "V", run: wrap(() => actions.variations.mutate({ slideId })) } : null,
       slideId ? { id: "reseed", label: "Reseed current slide", group: "Actions", run: wrap(() => actions.regenerate.mutate({ slideId, reseed: true })) } : null,
       { id: "new", label: "New slide", group: "Actions", hint: "N", run: wrap(() => actions.addSlide.mutate()) },
-      { id: "present", label: "Present deck (fullscreen)", group: "Actions", run: wrap(() => setPresenting(true)) },
+      detail.slides.length > 0 ? { id: "present", label: "Present deck (fullscreen)", group: "Actions", run: wrap(() => setPresenting(true)) } : null,
       { id: "overview", label: editorView === "grid" ? "Back to single slide" : "Overview — all slides at once", group: "Actions", run: wrap(() => setEditorView(editorView === "grid" ? "canvas" : "grid")) },
       { id: "review", label: `${detail.deck.reviewMode ? "Disable" : "Enable"} review mode`, group: "Actions", run: wrap(() => review.mutate()) },
       { id: "design", label: "Edit main design prompt", group: "Actions", run: wrap(() => setShowDesignEditor(true)) },

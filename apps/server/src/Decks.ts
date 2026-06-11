@@ -252,11 +252,18 @@ async function buildPptx(detail: DeckDetail): Promise<string> {
       const b64 = fs.readFileSync(blobPath(slide.imageBlobRef)).toString("base64");
       s.addImage({ data: `data:image/${ext};base64,${b64}`, x: 0, y: 0, w: dims.w, h: dims.h });
     }
-    // The prompt IS the slide (its substrate) — keep it with the slide, in its notes.
-    s.addNotes(slide.prompt);
+    // The prompt IS the slide (its substrate) — keep it with the slide, in its
+    // notes. Strip XML-1.0-illegal control chars so a stray byte can't corrupt
+    // the whole .pptx (pptxgenjs escapes metachars but not these).
+    // eslint-disable-next-line no-control-regex -- intentionally stripping XML-illegal control chars
+    s.addNotes(slide.prompt.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ""));
   }
   const buf = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
-  return writeBlob(buf, "pptx");
+  // Content-address the .pptx so re-exporting the same deck reuses one blob
+  // instead of orphaning a new multi-MB file on every export.
+  const ref = `pptx_${hash(buf.toString("latin1"))}.pptx`;
+  if (!fs.existsSync(blobPath(ref))) fs.writeFileSync(blobPath(ref), buf);
+  return ref;
 }
 
 /** One async bundle builder: a real single-file .pptx for pptx, else the

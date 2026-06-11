@@ -17,10 +17,24 @@ export function PresentMode({ detail }: { detail: DeckDetail }) {
 
   const start = slides.findIndex((s) => s.id === activeSlideId);
   const [idx, setIdx] = useState(start < 0 ? 0 : start);
+  const [broken, setBroken] = useState(false);
   const idxRef = useRef(idx);
   idxRef.current = idx;
 
   const clamp = (n: number) => Math.max(0, Math.min(slides.length - 1, n));
+
+  // Re-clamp if the deck shrinks while presenting (a WS refetch), and exit if it
+  // empties — otherwise idx points past the end and the counter reads "8 / 5".
+  useEffect(() => {
+    if (slides.length === 0) {
+      setPresenting(false);
+      return;
+    }
+    setIdx((c) => Math.max(0, Math.min(slides.length - 1, c)));
+  }, [slides.length, setPresenting]);
+
+  // A fresh image per slide — clear the broken-fallback when the slide changes.
+  useEffect(() => setBroken(false), [idx]);
   const exit = () => {
     const cur = slides[idxRef.current];
     if (cur) setActiveSlide(cur.id); // leave the editor focused on where you ended
@@ -53,8 +67,8 @@ export function PresentMode({ detail }: { detail: DeckDetail }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex select-none items-center justify-center bg-black">
-      {url ? (
-        <img src={url} alt="" className="max-h-full max-w-full object-contain" />
+      {url && !broken ? (
+        <img src={url} alt="" onError={() => setBroken(true)} className="max-h-full max-w-full object-contain" />
       ) : (
         <span className="mono text-[12px] uppercase tracking-eyebrow text-fg-faint">Slide not rendered yet</span>
       )}
