@@ -47,12 +47,18 @@ The release workflow signs automatically **when these repo secrets are set**
 (Settings → Secrets and variables → Actions). Until then it builds unsigned and
 still publishes — nothing else to change.
 
-**macOS** (Developer ID Application cert + an App Store Connect app-specific password):
+**macOS** — a Developer ID Application cert (the `.p12`) for signing:
 - `MAC_CSC_LINK` — base64 of the exported `.p12`: `base64 -i cert.p12 | pbcopy`
 - `MAC_CSC_KEY_PASSWORD` — the `.p12` export password
-- `APPLE_ID` — your Apple ID email
-- `APPLE_APP_SPECIFIC_PASSWORD` — an app-specific password (appleid.apple.com)
-- `APPLE_TEAM_ID` — your 10-char Team ID
+
+plus notarization auth — **either** an App Store Connect API key (preferred — no
+2FA / app-specific password, the way CodexBar does it):
+- `APPLE_API_KEY_P8` — the contents of the `.p8` key from App Store Connect
+- `APPLE_API_KEY_ID` — the key's ID
+- `APPLE_API_ISSUER` — the issuer UUID
+
+**or** the Apple-ID fallback:
+- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
 
 **Windows** (a code-signing `.pfx`, e.g. from an EV/OV cert or Azure Trusted Signing):
 - `WIN_CSC_LINK` — base64 of the `.pfx`
