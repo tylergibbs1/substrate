@@ -1,0 +1,44 @@
+name: Release
+
+# Push a tag like v0.3.0 to build installers on all three platforms and publish
+# them to a GitHub Release (electron-builder --publish). Unsigned for now — add
+# CSC_* / Apple notarization secrets when certs are available.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Build the web app + bundle the server into a single self-contained .mjs.
+      - run: pnpm build:dist
+
+      # Package the platform installer (dmg / nsis / AppImage) and upload it to
+      # the GitHub Release for this tag.
+      - name: Package + publish
+        run: pnpm --filter @substrate/desktop exec electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No signing certs yet: don't try to auto-discover an identity.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
