@@ -2,22 +2,28 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { spawn } from "node:child_process";
 
 /**
- * Read-only, sandboxed file exploration for the deck-building agent — the same
+ * Sandboxed file exploration + a shell for the deck-building agent — the same
  * primitives Claude Code / Codex / opencode give a coding agent, scoped to ONE
  * user-chosen root so the agent can ground a deck in the user's real material
- * (notes, data, a spec, a CSV) instead of guessing.
+ * (notes, data, a spec, a CSV) instead of guessing, and run code to ANALYZE it.
  *
  * Safety (modeled on codex's canonicalize-and-reject + opencode's containment):
- * - Every path is resolved against the root and `realpath`-canonicalized, then
- *   rejected if it escapes the root. File CONTENTS are untrusted (a prompt-
- *   injection surface), so there is no "ask the human" fallback — out-of-root
- *   access simply fails.
- * - Strictly read-only: nothing here writes, deletes, renames, or executes.
- * - Caps mirror opencode (50 KB / 2000 lines per read, 100 search hits) so a huge
- *   tree can't blow up the model's context. Binaries and heavy/junk dirs are
- *   skipped, not dumped.
+ * - Path TOOLS (read/list/glob/grep) are read-only and confined: every path is
+ *   resolved against the root and `realpath`-canonicalized, then rejected if it
+ *   escapes. File CONTENTS are untrusted (a prompt-injection surface), so there
+ *   is no "ask the human" fallback — out-of-root access simply fails.
+ * - `run` is an UNCONFINED shell (the user's explicit choice): a command runs
+ *   with the host user's authority, cwd at the root. We mirror opencode's
+ *   guardrails — timeout (default 2m, cap 10m), bounded captured output, an
+ *   advisory warning when the command names paths outside the root — and also
+ *   scrub Substrate's own API keys / MCP token from the child env. It is NOT an
+ *   OS sandbox: a malicious file could still steer it, so the build prompt's
+ *   data-not-instructions guard is the first line of defense.
+ * - Read caps mirror opencode (50 KB / 2000 lines per read, 100 search hits) so a
+ *   huge tree can't blow up the model's context. Binaries and junk dirs skipped.
  */
 
 const READ_MAX_BYTES = 50 * 1024;
@@ -26,6 +32,12 @@ const MAX_LINE_LENGTH = 2000;
 const SEARCH_LIMIT = 100;
 const GREP_MAX_FILE_BYTES = 256 * 1024;
 const WALK_MAX_ENTRIES = 20000;
+const RUN_TIMEOUT_MS = 2 * 60 * 1000;
+const RUN_MAX_TIMEOUT_MS = 10 * 60 * 1000;
+const RUN_MAX_OUTPUT = 30 * 1024;
+// Never hand Substrate's own secrets to a command the agent composed from
+// untrusted file content — even in the unconfined shell.
+const SCRUBBED_ENV_KEYS = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "SUBSTRATE_MCP_TOKEN"];
 
 const IGNORED_DIRS = new Set([
   "node_modules", ".git", ".hg", ".svn", "dist", "build", "out", ".next", ".nuxt",
@@ -51,6 +63,9 @@ export interface FileContext {
   listDir(input?: string): Promise<string>;
   glob(pattern: string, input?: string): Promise<string>;
   grep(pattern: string, input?: string, include?: string): Promise<string>;
+  /** Run a shell command (cwd = root) to analyze/transform the material. Bounded
+   *  output + timeout; unconfined (host-user authority). Never rejects. */
+  run(command: string, timeoutMs?: number): Promise<string>;
 }
 
 /** Open a read-only file context rooted at a user-chosen directory or file. */
@@ -94,7 +109,13 @@ export function openFileContext(input: string): FileContext {
   };
 
   // Depth-first walk yielding files, skipping ignored dirs and capping work.
+  // When the user attached a SINGLE file, the context is exactly that file — never
+  // the parent dir's other contents — so the walk yields only it.
   async function* walk(dir: string): AsyncGenerator<string> {
+    if (focusFile) {
+      yield focusFile;
+      return;
+    }
     let seen = 0;
     const stack: string[] = [dir];
     while (stack.length > 0) {
@@ -118,7 +139,8 @@ export function openFileContext(input: string): FileContext {
   }
 
   const readFile: FileContext["readFile"] = async (inputPath, offset = 1, limit = READ_DEFAULT_LIMIT) => {
-    const target = resolveInRoot(inputPath);
+    // Single-file context: only ever the attached file, whatever path is requested.
+    const target = focusFile ?? resolveInRoot(inputPath);
     const stat = await fsp.stat(target);
     if (stat.isDirectory()) return listDir(inputPath);
 
@@ -149,6 +171,8 @@ export function openFileContext(input: string): FileContext {
   };
 
   const listDir: FileContext["listDir"] = async (inputPath = ".") => {
+    // Single-file context: the only listing is the attached file itself.
+    if (focusFile) return `(1 attached file)\n${path.basename(focusFile)}`;
     const target = resolveInRoot(inputPath);
     const stat = await fsp.stat(target);
     if (!stat.isDirectory()) return readFile(inputPath);
@@ -220,7 +244,73 @@ export function openFileContext(input: string): FileContext {
     return `${total} match(es):\n${groups.join("\n\n")}${trunc}`;
   };
 
-  return { root, focusFile, focusRel: focusFile ? path.relative(root, focusFile) : null, readFile, listDir, glob, grep };
+  // Absolute paths named in the command that fall outside the root — advisory
+  // only (the shell is unconfined), surfaced so the agent/log notes the reach.
+  const externalPaths = (command: string): string[] => {
+    const out = new Set<string>();
+    const tokens = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
+    for (const token of tokens) {
+      const value = token.replace(/^(['"])(.*)\1$/, "$2").replace(/[;,|&]+$/, "");
+      if (!path.isAbsolute(value)) continue;
+      const resolved = path.resolve(value);
+      const r = path.relative(root, resolved);
+      if (r === ".." || r.startsWith(".." + path.sep) || path.isAbsolute(r)) out.add(resolved);
+    }
+    return [...out];
+  };
+
+  const run: FileContext["run"] = (command, timeoutMs = RUN_TIMEOUT_MS) => {
+    const limit = Math.min(Math.max(1000, timeoutMs), RUN_MAX_TIMEOUT_MS);
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    for (const k of SCRUBBED_ENV_KEYS) delete env[k];
+    const external = externalPaths(command);
+    return new Promise((resolve) => {
+      let child: ReturnType<typeof spawn>;
+      try {
+        child = spawn("/bin/sh", ["-c", command], { cwd: root, env });
+      } catch (e) {
+        resolve(`Failed to start the command: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+      let out = "";
+      let err = "";
+      let outTrunc = false;
+      let errTrunc = false;
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGKILL");
+      }, limit);
+      timer.unref?.();
+      child.stdout?.on("data", (d: Buffer) => {
+        if (out.length < RUN_MAX_OUTPUT) out += d.toString("utf8");
+        else outTrunc = true;
+      });
+      child.stderr?.on("data", (d: Buffer) => {
+        if (err.length < RUN_MAX_OUTPUT) err += d.toString("utf8");
+        else errTrunc = true;
+      });
+      child.on("error", (e: Error) => {
+        clearTimeout(timer);
+        resolve(`Failed to run the command: ${e.message}`);
+      });
+      child.on("close", (code: number | null) => {
+        clearTimeout(timer);
+        out = out.slice(0, RUN_MAX_OUTPUT);
+        err = err.slice(0, RUN_MAX_OUTPUT);
+        let body = out && err ? `${out}\n\nstderr:\n${err}` : err ? `stderr:\n${err}` : out;
+        if (!body) body = "(no output)";
+        if (outTrunc || errTrunc) body += `\n[output truncated at ${RUN_MAX_OUTPUT / 1024}KB]`;
+        const warn = external.length ? `\nNote: this command names paths outside the context root: ${external.join(", ")}` : "";
+        const tail = timedOut
+          ? `\n\nCommand timed out after ${Math.round(limit / 1000)}s and was killed.`
+          : `\n\nExited with code ${code ?? "unknown"}.`;
+        resolve(`${body}${warn}${tail}`);
+      });
+    });
+  };
+
+  return { root, focusFile, focusRel: focusFile ? path.relative(root, focusFile) : null, readFile, listDir, glob, grep, run };
 }
 
 /** Minimal glob → RegExp: supports `**` (across dirs), `*` (within a segment),
