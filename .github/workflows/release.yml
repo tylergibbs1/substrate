@@ -61,6 +61,9 @@ jobs:
           # No signing cert on this platform → build unsigned, don't probe the keychain.
           if [ -z "$CSC_LINK" ]; then
             export CSC_IDENTITY_AUTO_DISCOVERY=false
+            # Force-skip mac signing: a hardened-runtime config + the CI runner's
+            # keychain otherwise make electron-builder attempt (and fail) to sign.
+            [ "${{ runner.os }}" = "macOS" ] && args="$args -c.mac.identity=null"
           fi
           # An App Store Connect API key (.p8) is the cleanest notarytool auth — no
           # 2FA / app-specific password. Write it to a file electron-builder reads.
