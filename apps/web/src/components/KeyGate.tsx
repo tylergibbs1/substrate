@@ -24,7 +24,7 @@ export function KeyGate({ children }: { children: ReactNode }) {
     <div className="flex-1 grid place-items-center px-6">
       <div className="w-full max-w-md grid gap-5 -mt-[6vh]">
         <div className="grid gap-2 text-center">
-          <div className="mx-auto grid place-items-center w-11 h-11 rounded-xl border border-line bg-ink-3">
+          <div className="mx-auto grid place-items-center w-11 h-11 rounded-full border border-line bg-ink-3">
             <OpenAI className="w-6 h-6" />
           </div>
           <h1 className="text-2xl tracking-tight [letter-spacing:-0.03em]">Connect OpenAI to begin</h1>
@@ -33,7 +33,7 @@ export function KeyGate({ children }: { children: ReactNode }) {
             stored locally and you won't be asked again.
           </p>
         </div>
-        <div className="rounded-xl border border-line bg-ink-2 p-4">
+        <div className="rounded-lg border border-line bg-ink-2 p-4">
           <ApiKeyForm />
         </div>
       </div>

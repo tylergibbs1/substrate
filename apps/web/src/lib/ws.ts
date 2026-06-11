@@ -17,6 +17,10 @@ export function useServerEvents(activeDeckId: string | null, onMcpClients: (n: n
   const qc = useQueryClient();
   const setWsConnected = useEditor((s) => s.setWsConnected);
   const setNotice = useEditor((s) => s.setNotice);
+  const setAgentActivity = useEditor((s) => s.setAgentActivity);
+  const setAgentRun = useEditor((s) => s.setAgentRun);
+  const startAgentSteps = useEditor((s) => s.startAgentSteps);
+  const pushAgentStep = useEditor((s) => s.pushAgentStep);
 
   // Keep the live deck id in a ref so the long-lived socket always resyncs the
   // *current* deck on reconnect, without tearing down and re-dialing whenever
@@ -34,6 +38,23 @@ export function useServerEvents(activeDeckId: string | null, onMcpClients: (n: n
       switch (event.type) {
         case "mcp-clients":
           onMcpClients(event.count);
+          break;
+        case "agent-activity":
+          // Reflect that an agent took (or released) the controls of a deck, so
+          // the editor can light up live while the agent works. Edits themselves
+          // still arrive via deck/slide/job-changed; this is the presence layer.
+          setAgentActivity(event.active ? { deckId: event.deckId, agent: event.agent } : null);
+          break;
+        case "agent-run":
+          // The in-app agent's run boundary: brackets the whole run, so the feed
+          // resets cleanly at the start and "working" holds through read-only
+          // exploration — independent of the debounced agent-activity edge.
+          setAgentRun(event.active ? { deckId: event.deckId } : null);
+          if (event.active) startAgentSteps(event.deckId);
+          break;
+        case "agent-step":
+          // One narrated step of the in-app agent's run, streamed into the feed.
+          pushAgentStep(event.deckId, event.label, event.detail);
           break;
         case "job-changed":
           // Delta: patch the embedded job row into the cached deck in place.

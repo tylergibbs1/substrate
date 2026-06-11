@@ -4,6 +4,7 @@ import { SqliteLayer } from "./Sqlite.ts";
 import { SettingsLayer } from "./Settings.ts";
 import { ProviderLayer } from "./Provider.ts";
 import { EventsLayer } from "./Events.ts";
+import { AgentActivityLayer } from "./AgentActivity.ts";
 import { GenerationLayer } from "./Generation.ts";
 import { DecksLayer } from "./Decks.ts";
 
@@ -20,7 +21,10 @@ import { DecksLayer } from "./Decks.ts";
 const ProviderWithSettings = Layer.provide(ProviderLayer, SettingsLayer);
 const Infra = Layer.mergeAll(SqliteLayer, SettingsLayer, ProviderWithSettings, EventsLayer);
 const GenerationWithInfra = Layer.provide(GenerationLayer, Infra);
-const Services = Layer.mergeAll(Infra, GenerationWithInfra);
+// AgentActivity depends only on Events (from Infra); it publishes the
+// "an agent is at the controls" presence events the editor reacts to.
+const AgentActivityWithInfra = Layer.provide(AgentActivityLayer, Infra);
+const Services = Layer.mergeAll(Infra, GenerationWithInfra, AgentActivityWithInfra);
 const DecksWithServices = Layer.provide(DecksLayer, Services);
 
 export const AppLayer = Layer.mergeAll(Services, DecksWithServices);

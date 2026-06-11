@@ -261,6 +261,25 @@ export const ServerEvent = Schema.Union([
   /** A background agent build failed or stopped short — surfaced so the user isn't
    *  left staring at a silently empty/partial deck. */
   Schema.Struct({ type: Schema.Literal("deck-error"), deckId: NonEmpty, message: Schema.String }),
+  /** One step the in-app agent took, streamed live so the user watches it work:
+   *  a friendly `label` ("Added a slide") + optional `detail` (the slide headline,
+   *  a file it read, …). The Assistant panel renders these as a live feed. */
+  Schema.Struct({
+    type: Schema.Literal("agent-step"),
+    deckId: NonEmpty,
+    agent: Schema.String,
+    label: NonEmpty,
+    detail: Schema.NullOr(Schema.String),
+  }),
+  /** Brackets a whole in-app agent run (build/revise): `active: true` at the start,
+   *  `false` at the end. Unlike the debounced agent-activity edge, this spans the
+   *  entire run — so the live feed resets cleanly and the "working" state holds
+   *  through read-only exploration, not just write bursts. */
+  Schema.Struct({
+    type: Schema.Literal("agent-run"),
+    deckId: NonEmpty,
+    active: Schema.Boolean,
+  }),
 ]);
 export type ServerEvent = typeof ServerEvent.Type;
 

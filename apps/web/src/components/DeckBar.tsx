@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Palette, Plug, X, AlertTriangle, Loader2, CheckCircle2, WifiOff, KeyRound } from "lucide-react";
+import { Palette, Plug, X, AlertTriangle, Loader2, CheckCircle2, WifiOff, KeyRound, Bot } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useEditor } from "../store.js";
 import { Button, Chip, Eyebrow, IconButton } from "../ui.js";
@@ -17,7 +17,11 @@ import type { DeckDetail } from "@substrate/contracts";
 export function DeckBar({ detail }: { detail: DeckDetail }) {
   const qc = useQueryClient();
   const mcpClients = useEditor((s) => s.mcpClients);
+  const agentActivity = useEditor((s) => s.agentActivity);
   const wsConnected = useEditor((s) => s.wsConnected);
+  // An agent is at the controls of THIS deck right now — the status rail reflects
+  // it live so the human sees they're co-driving with an agent, not editing alone.
+  const agentOnThisDeck = agentActivity?.deckId === detail.deck.id ? agentActivity : null;
   const setConnectOpen = useEditor((s) => s.setConnectOpen);
   const setSettingsOpen = useEditor((s) => s.setSettingsOpen);
   const showEditor = useEditor((s) => s.showDesignEditor);
@@ -68,7 +72,7 @@ export function DeckBar({ detail }: { detail: DeckDetail }) {
             className="w-full bg-ink-3 mono text-[12px] leading-relaxed text-fg px-3 py-2.5 outline-none resize-none rounded-lg border border-line focus:border-accent"
           />
           <div className="flex items-center gap-3 mt-2">
-            <Button variant="primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
+            <Button variant="default" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
               {save.isPending ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
               Apply & re-render {detail.slides.length} slides
             </Button>
@@ -115,11 +119,20 @@ export function DeckBar({ detail }: { detail: DeckDetail }) {
             </span>
           )}
           <span className="text-line-2">·</span>
-          <button type="button" onClick={() => setConnectOpen(true)} title="Connect an agent over MCP" className="transition-opacity hover:opacity-80">
-            <Chip tone={mcpClients > 0 ? "ok" : "neutral"}>
-              <Plug size={10} /> MCP {mcpClients} · connect
-            </Chip>
-          </button>
+          {agentOnThisDeck ? (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border border-agent-soft bg-agent-wash px-2 py-0.5 text-[10px] uppercase tracking-wider text-agent mono animate-pulse-soft"
+              title={`${agentOnThisDeck.agent} is editing this deck over MCP`}
+            >
+              <Bot size={11} /> {agentOnThisDeck.agent} working
+            </span>
+          ) : (
+            <button type="button" onClick={() => setConnectOpen(true)} title="Connect an agent over MCP" className="transition-opacity hover:opacity-80">
+              <Chip tone={mcpClients > 0 ? "ok" : "neutral"}>
+                <Plug size={10} /> MCP {mcpClients} · connect
+              </Chip>
+            </button>
+          )}
           <span className="text-line-2">·</span>
           <button
             type="button"

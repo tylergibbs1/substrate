@@ -34,7 +34,7 @@ export function Inspector({ detail, slide }: { detail: DeckDetail; slide: Slide 
               onClick={() => setThinking(true)}
               className={cx(
                 "flex-1 inline-flex items-center justify-center gap-1 rounded-full px-2 py-1 font-normal transition-colors",
-                quality === "thinking" ? "bg-fg text-[#0a0a0a]" : "text-fg-dim hover:text-fg",
+                quality === "thinking" ? "bg-fg text-on-primary" : "text-fg-dim hover:text-fg",
               )}
             >
               <Brain size={12} /> Thinking

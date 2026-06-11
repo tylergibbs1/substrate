@@ -20,6 +20,7 @@ export function Editor({ deckId }: { deckId: string }) {
   const activeSlideId = useEditor((s) => s.activeSlideId);
   const setActiveSlide = useEditor((s) => s.setActiveSlide);
   const paletteOpen = useEditor((s) => s.paletteOpen);
+  const agentActivity = useEditor((s) => s.agentActivity);
   const actions = useSlideActions(deckId);
 
   // Auto-select the first slide when none is active.
@@ -28,6 +29,20 @@ export function Editor({ deckId }: { deckId: string }) {
       setActiveSlide(deck.data.slides[0]!.id);
     }
   }, [activeSlideId, deck.data, setActiveSlide]);
+
+  // Follow the agent: while an agent drives THIS deck, jump to its newest slide as
+  // each one is ADDED — only on a real append (count grew), never on a deletion or
+  // reorder, which shouldn't yank the selection to the end.
+  const agentOnThisDeck = agentActivity?.deckId === deckId;
+  const slideCount = deck.data?.slides.length ?? 0;
+  const prevSlideCount = useRef(slideCount);
+  useEffect(() => {
+    const grew = slideCount > prevSlideCount.current;
+    prevSlideCount.current = slideCount;
+    if (agentOnThisDeck && grew && slideCount > 0) {
+      setActiveSlide(deck.data!.slides[slideCount - 1]!.id);
+    }
+  }, [agentOnThisDeck, slideCount, setActiveSlide]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Generate display titles for any untitled slides (once each). The server
   // derives them with the title model and emits a deck-changed event, which
