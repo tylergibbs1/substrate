@@ -8,6 +8,7 @@ import { Editor } from "./components/Editor.js";
 import { CommandPalette } from "./components/CommandPalette.js";
 import { ConnectAgent } from "./components/ConnectAgent.js";
 import { Settings } from "./components/Settings.js";
+import { KeyGate } from "./components/KeyGate.js";
 
 export default function App() {
   const activeDeckId = useEditor((s) => s.activeDeckId);
@@ -37,9 +38,12 @@ export default function App() {
           Can't reach the Substrate server on :4321. Run <span className="mono">pnpm dev:server</span> in another terminal.
         </div>
       )}
-      {activeDeckId ? <Editor deckId={activeDeckId} /> : <DeckPicker />}
-      <CommandPalette />
-      <ConnectAgent />
+      {/* No key → a first-run gate replaces the whole editor until one is saved. */}
+      <KeyGate>
+        {activeDeckId ? <Editor deckId={activeDeckId} /> : <DeckPicker />}
+        <CommandPalette />
+        <ConnectAgent />
+      </KeyGate>
       <Settings />
     </div>
   );
