@@ -1,0 +1,30 @@
+{
+  "name": "@substrate/monorepo",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Desktop app for AI-generated raster slide decks where the prompt is the only editable artifact. Stack & conventions modeled on pingdotgg/t3code.",
+  "type": "module",
+  "packageManager": "pnpm@10.18.3",
+  "engines": {
+    "node": "^24.13.1"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @substrate/server --filter @substrate/web dev",
+    "dev:server": "pnpm --filter @substrate/server dev",
+    "dev:web": "pnpm --filter @substrate/web dev",
+    "build": "pnpm --filter @substrate/web build",
+    "mcp": "pnpm --filter @substrate/server mcp",
+    "typecheck": "pnpm -r typecheck",
+    "tc": "pnpm -r typecheck",
+    "lint": "oxlint .",
+    "desktop": "pnpm --filter @substrate/desktop start"
+  },
+  "devDependencies": {
+    "@effect/language-service": "catalog:",
+    "@effect/tsgo": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "oxlint": "^1.0.0",
+    "typescript": "catalog:"
+  }
+}

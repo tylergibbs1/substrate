@@ -1,0 +1,20 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+onlyBuiltDependencies:
+  - electron
+  - esbuild
+
+# Versions pinned once, referenced as `catalog:` from every package — the same
+# convention t3code uses to keep the Effect toolchain in lockstep.
+catalog:
+  effect: 4.0.0-beta.78
+  "@effect/platform-node": 4.0.0-beta.78
+  "@effect/vitest": 4.0.0-beta.78
+  "@effect/language-service": 0.86.2
+  "@effect/tsgo": 0.13.2
+  "@typescript/native-preview": 7.0.0-dev.20260604.1
+  "@types/node": 24.12.4
+  typescript: ~6.0.3
+  vite: ^6.0.0

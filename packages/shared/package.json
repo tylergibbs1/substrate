@@ -1,0 +1,36 @@
+{
+  "name": "@substrate/shared",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./PromptAssembly": {
+      "types": "./src/PromptAssembly.ts",
+      "import": "./src/PromptAssembly.ts"
+    },
+    "./Aspect": {
+      "types": "./src/Aspect.ts",
+      "import": "./src/Aspect.ts"
+    },
+    "./Presets": {
+      "types": "./src/Presets.ts",
+      "import": "./src/Presets.ts"
+    },
+    "./SlideTitle": {
+      "types": "./src/SlideTitle.ts",
+      "import": "./src/SlideTitle.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@substrate/contracts": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  }
+}

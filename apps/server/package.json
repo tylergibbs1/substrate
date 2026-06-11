@@ -1,0 +1,31 @@
+{
+  "name": "@substrate/server",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "substrate-mcp": "./src/mcp.ts"
+  },
+  "scripts": {
+    "dev": "node --watch src/index.ts",
+    "start": "node src/index.ts",
+    "mcp": "node src/mcp.ts",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@substrate/contracts": "workspace:*",
+    "@substrate/shared": "workspace:*",
+    "effect": "catalog:",
+    "ws": "^8.18.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "catalog:",
+    "@types/node": "catalog:",
+    "@types/ws": "^8.5.13",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  }
+}

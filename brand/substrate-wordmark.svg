@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 200">
+  <g transform="translate(28,28) scale(0.5625)"><path d="M 159.56 192.71 A 72 72 0 0 1 63.29 96.44 L 86.66 107.83 A 46 46 0 0 0 148.17 169.34 Z" fill="#ffffff"/><path d="M 96.44 63.29 A 72 72 0 0 1 192.71 159.56 L 169.34 148.17 A 46 46 0 0 0 107.83 86.66 Z" fill="#ffffff"/><path d="M 199.42 199.42 L 117.75 138.25 L 56.58 56.58 L 138.25 117.75 Z" fill="#ffffff"/></g>
+  <text x="196" y="100" dominant-baseline="central" font-family="Inter, system-ui, -apple-system, sans-serif"
+        font-size="92" font-weight="500" letter-spacing="-3" fill="#ffffff">substrate</text>
+</svg>

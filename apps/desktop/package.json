@@ -1,0 +1,25 @@
+{
+  "name": "@substrate/desktop",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Electron shell that bundles the Substrate server and web editor.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^41.0.0",
+    "electron-builder": "^25.0.0",
+    "electron-updater": "^6.3.0"
+  },
+  "build": {
+    "appId": "com.substrate.app",
+    "productName": "Substrate",
+    "files": ["main.js", "build/**", "../web/dist/**", "../server/dist/**"],
+    "directories": { "buildResources": "build" },
+    "mac": { "target": "dmg", "icon": "build/icon.png" },
+    "linux": { "target": "AppImage", "icon": "build/icon.png" },
+    "win": { "target": "nsis", "icon": "build/icon.png" }
+  }
+}

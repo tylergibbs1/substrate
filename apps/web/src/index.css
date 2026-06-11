@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+/*
+ * Substrate's surface tokens — xAI dark system (see DESIGN.md). A strict
+ * near-black canvas broken only by white outline pills and a rare warm sunset
+ * accent; Inter weight-400 display with negative tracking, Geist Mono uppercase
+ * for eyebrows/IDs. Visual weight is still a ranking system (PRD §7.3): the
+ * rendered slide is primary, the active prompt is the work surface, chrome
+ * recedes. The @theme block is the single source of truth for token values.
+ */
+@theme {
+  --color-ink-0: #0a0a0a;   /* canvas — deepest page bg */
+  --color-ink-1: #0d0e10;   /* panel — a hair above canvas */
+  --color-ink-2: #191919;   /* canvas-card — raised surface / cards */
+  --color-ink-3: #1a1c20;   /* canvas-soft — hover / input fill */
+  --color-line: #212327;    /* hairline divider/border */
+  --color-line-2: #2c2f35;  /* stronger border */
+
+  --color-fg: #ffffff;      /* ink — primary text */
+  --color-fg-dim: #dadbdf;  /* body — secondary text */
+  --color-fg-faint: #7d8187;/* mute — tertiary / chrome */
+
+  --color-accent: #ff7a17;  /* accent-sunset — reserved for selection/active + focus */
+  --color-accent-dim: #3a2410;
+  --color-agent: #7c3aed;   /* accent-dusk — agent attribution */
+  --color-busy: #a0c3ec;    /* accent-breeze — work in flight (distinct from accent) */
+  --color-warn: #e6b450;    /* amber — distinct from the sunset accent above */
+  --color-danger: #f08a8a;  /* kept readable red */
+  --color-ok: #7ed3a3;      /* kept readable green */
+
+  /* Illustrative accent palette (DESIGN.md) — rare, for chips/illustrations. */
+  --color-accent-dusk: #7c3aed;
+  --color-accent-twilight: #c4b5fd;
+  --color-accent-breeze: #a0c3ec;
+  --color-accent-sunset-soft: #ffc285;
+  --color-canvas-mid: #363a3f;
+  --color-on-primary: #0a0a0a;
+
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, sans-serif;
+
+  --radius-panel: 0px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-ink-0);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Headings balance; body avoids orphans (make-interfaces-feel-better §10). */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 35%, transparent);
+}
+
+/* Quiet, thin scrollbars — chrome should recede (§7.3). */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line-2);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-fg-faint);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* macOS Electron (hiddenInset): reserve the traffic-light gutter in the editor
+   header and let the bar drag the window. Interactive controls opt back out so
+   they stay clickable. No effect in the browser (class only set under Electron). */
+.is-electron .titlebar {
+  padding-left: 76px;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.is-electron .titlebar button,
+.is-electron .titlebar a,
+.is-electron .titlebar input,
+.is-electron .titlebar label,
+.is-electron .titlebar [role="group"] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+  /* Dynamic numbers (seeds, counts) don't reflow as they change (§9). */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Agent-attribution tint — one source of truth so the proposal panel, card
+   border, and chip all read as the same "agent" surface and can be retuned in
+   one place (rather than re-deriving the same color-mix at each call site). */
+.bg-agent-wash {
+  background: color-mix(in oklab, var(--color-agent) 7%, transparent);
+}
+.border-agent-soft {
+  border-color: color-mix(in oklab, var(--color-agent) 40%, transparent);
+}
+
+/* Subtle scanning shimmer for in-flight renders. */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.7; }
+}
+.animate-pulse-soft {
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
+@keyframes sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.animate-sweep {
+  animation: sweep 1.4s ease-in-out infinite;
+  will-change: transform; /* GPU-compositable property only (§15). */
+}
+
+/* Subtle enter for surfaces that appear on demand (proposals, variations).
+   Small translateY, soft easing — enters are gentle (§5/§6). */
+@keyframes enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-enter {
+  animation: enter 0.22s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-enter,
+  .animate-sweep,
+  .animate-pulse-soft {
+    animation: none;
+  }
+}

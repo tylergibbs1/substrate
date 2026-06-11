@@ -1,0 +1,157 @@
+import type {
+  AddSlideRequest,
+  CreateDeckRequest,
+  DeckDetail,
+  DeckSummary,
+  DesignPreset,
+  EditMode,
+  ExportFormat,
+  PromptEdit,
+  Quality,
+  ServerSettings,
+} from "@substrate/contracts";
+
+export type { ServerSettings } from "@substrate/contracts";
+
+/** Thin REST client for the editor. Mirrors the server's HTTP surface. */
+
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    headers: { "content-type": "application/json", ...init?.headers },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export interface ServerStatus {
+  provider: string;
+  model: string;
+  usingMock: boolean;
+  mcpClients: number;
+  concurrency: number;
+  mcpUrl?: string;
+  mcpToken?: string;
+  jobs: { rendering: number; thinking: number; queued: number };
+}
+
+export interface SlideHistory {
+  versions: Array<{
+    id: string;
+    imageBlobRef: string | null;
+    seed: number;
+    model: string;
+    quality: Quality;
+    createdAt: number;
+  }>;
+  edits: PromptEdit[];
+  substrates: Array<{
+    id: string;
+    prompt: string;
+    author: { kind: string; id: string };
+    createdAt: number;
+  }>;
+}
+
+export interface Variation {
+  versionId: string;
+  imageBlobRef: string;
+  seed: number;
+}
+
+export const api = {
+  status: () => req<ServerStatus>("/api/status"),
+  settings: () => req<ServerSettings>("/api/settings"),
+  setApiKey: (openaiApiKey: string | null) =>
+    req<ServerSettings>("/api/settings", { method: "POST", body: JSON.stringify({ openaiApiKey }) }),
+  presets: () => req<DesignPreset[]>("/api/presets"),
+  decks: () => req<DeckSummary[]>("/api/decks"),
+  deck: (id: string) => req<DeckDetail>(`/api/decks/${id}`),
+
+  createDeck: (body: CreateDeckRequest) =>
+    req<{ deckId: string; outlineFailed: boolean }>("/api/decks", { method: "POST", body: JSON.stringify(body) }),
+
+  setDesignPrompt: (deckId: string, designPrompt: string, mode: EditMode) =>
+    req<{ applied: boolean; editId: string; affectedSlides: number }>(`/api/decks/${deckId}/design`, {
+      method: "POST",
+      body: JSON.stringify({ designPrompt, mode }),
+    }),
+
+  addSlide: (deckId: string, body: AddSlideRequest) =>
+    req<{ slideId: string }>(`/api/decks/${deckId}/slides`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  reorder: (deckId: string, orderedSlideIds: string[]) =>
+    req<{ ok: true }>(`/api/decks/${deckId}/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ orderedSlideIds }),
+    }),
+
+  setReviewMode: (deckId: string, on: boolean) =>
+    req<{ ok: true }>(`/api/decks/${deckId}/review`, { method: "POST", body: JSON.stringify({ on }) }),
+
+  editSlidePrompt: (slideId: string, prompt: string, mode: EditMode) =>
+    req<{ applied: boolean; editId: string }>(`/api/slides/${slideId}/prompt`, {
+      method: "POST",
+      body: JSON.stringify({ prompt, mode }),
+    }),
+
+  regenerate: (slideId: string, body: { quality?: Quality; reseed?: boolean }) =>
+    req<{ jobId: string }>(`/api/slides/${slideId}/regenerate`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  variations: (slideId: string, count: number) =>
+    req<Variation[]>(`/api/slides/${slideId}/variations`, {
+      method: "POST",
+      body: JSON.stringify({ count }),
+    }),
+
+  pickVersion: (slideId: string, versionId: string) =>
+    req<{ ok: true }>(`/api/slides/${slideId}/pick`, {
+      method: "POST",
+      body: JSON.stringify({ versionId }),
+    }),
+
+  history: (slideId: string) => req<SlideHistory>(`/api/slides/${slideId}/history`),
+
+  resolveEdit: (editId: string, decision: "approve" | "reject") =>
+    req<{ applied: boolean }>(`/api/edits/${editId}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ decision }),
+    }),
+
+  // The manifest lists the bundle's files so the client can write them to a
+  // user-chosen location (see lib/downloadExport.ts). The disk-writing /export
+  // route stays for the MCP export_deck tool.
+  exportManifest: (deckId: string, format: ExportFormat) =>
+    req<ExportManifest>(`/api/decks/${deckId}/export/manifest?format=${format}`),
+
+  // Generate display titles for any slides that lack one (the rail shows a
+  // derived fallback until these land). A deck-changed event refreshes the deck.
+  ensureTitles: (deckId: string) =>
+    req<{ generated: number }>(`/api/decks/${deckId}/titles`, { method: "POST" }),
+};
+
+/** One file in an export bundle: an existing image blob or inline text. */
+export interface ExportFile {
+  name: string;
+  blobRef?: string;
+  text?: string;
+}
+
+export interface ExportManifest {
+  files: ExportFile[];
+  note?: string;
+  suggestedName: string;
+}
+
+export function blobUrl(ref: string | null | undefined): string | null {
+  return ref ? `/blobs/${ref}` : null;
+}

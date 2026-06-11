@@ -1,0 +1,14 @@
+{
+  "name": "substrate",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-24-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "postCreateCommand": "corepack enable && pnpm install",
+  "customizations": {
+    "vscode": {
+      "extensions": ["effectful-tech.effect-vscode", "oxc.oxc-vscode", "bradlc.vscode-tailwindcss"]
+    }
+  },
+  "forwardPorts": [4321, 5173]
+}
