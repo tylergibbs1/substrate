@@ -51,10 +51,12 @@ git push -q origin "$TAG"
 
 say "Release CI is building installers (macOS / Windows / Linux)…"
 RUN=""
-for _ in $(seq 1 20); do
-  RUN=$(gh run list --workflow=release.yml --event push --limit 1 --json databaseId,headBranch --jq '.[0].databaseId' 2>/dev/null || true)
+for _ in $(seq 1 30); do
+  # Match THIS tag's run (headBranch == the tag) — not just the latest run, which
+  # may still be a prior release while this one is registering.
+  RUN=$(gh run list --workflow=release.yml --branch "$TAG" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)
   [ -n "$RUN" ] && break
-  sleep 3
+  sleep 4
 done
 [ -n "$RUN" ] || die "couldn't find the release workflow run — check the Actions tab"
 gh run watch "$RUN" --exit-status || die "release build failed — see: gh run view $RUN"
