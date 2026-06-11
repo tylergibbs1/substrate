@@ -224,7 +224,7 @@ function SlideCanvas({ detail, slide }: { detail: DeckDetail; slide: Slide }) {
         />
         <div className="flex items-center gap-2 px-3 py-2">
           <Button
-            variant="primary"
+            variant="default"
             disabled={!dirty || save.isPending}
             onClick={() => save.mutate()}
             title="Apply the prompt edit and re-render this slide"
@@ -297,7 +297,7 @@ function ProposalCard({
         </span>
         <span className="flex items-center gap-1">
           <Button
-            variant="primary"
+            variant="default"
             onClick={() => resolve.mutate("approve")}
             disabled={resolve.isPending || staleBase}
             title={staleBase ? "Base changed since proposed — reject and ask for a fresh proposal" : undefined}

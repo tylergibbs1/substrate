@@ -69,6 +69,7 @@ export function ConnectAgent() {
 
   const status = useQuery({ queryKey: ["status"], queryFn: api.status, enabled: open });
   const deck = useQuery({ queryKey: ["deck", activeDeckId], queryFn: () => api.deck(activeDeckId!), enabled: open && !!activeDeckId });
+  const [client, setClient] = useState<"claude-code" | "codex" | "other">("claude-code");
 
   if (!open) return null;
 
@@ -103,7 +104,7 @@ Start by calling get_deck to read the current slides and their prompts.`;
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between px-4 h-11 border-b border-line">
-          <span className="flex items-center gap-2 text-[13px] font-medium">
+          <span className="flex items-center gap-2 text-[13px] font-normal">
             <Plug size={14} className="text-accent" /> Connect an agent
           </span>
           <IconButton label="Close" onClick={() => setOpen(false)} className="-mr-1">
@@ -113,16 +114,46 @@ Start by calling get_deck to read the current slides and their prompts.`;
 
         <div className="p-4 space-y-4">
           <p className="text-[12px] text-fg-dim">
-            Copy this prompt into your AI client of choice (Claude Code, Claude Desktop, Cursor, Codex…) to connect your
-            agent and let it co-edit this deck over MCP.
+            Paste this prompt into your AI client — Claude Code, Codex, Cursor, Claude Desktop — to connect it and let it
+            co-edit this deck over MCP.
           </p>
           <CopyBox label="Prompt — paste into your agent" value={prompt} multiline />
-          <CopyBox label="Register the server — Claude Code" value={cli} />
-          <CopyBox label="Codex — ~/.codex/config.toml" value={codex} multiline />
-          <CopyBox label="Other MCP clients (Claude Desktop, Cursor…)" value={mcpJson} multiline />
+
+          {/* Pick your client and show only its setup — one config, not a wall. */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <Eyebrow>Or register the server</Eyebrow>
+              <div className="flex rounded-full border border-line p-0.5 text-[11px] shrink-0">
+                {(
+                  [
+                    ["claude-code", "Claude Code"],
+                    ["codex", "Codex"],
+                    ["other", "Other"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    type="button"
+                    key={id}
+                    onClick={() => setClient(id)}
+                    aria-pressed={client === id}
+                    className={cx(
+                      "rounded-full px-2.5 py-0.5 transition-colors",
+                      client === id ? "bg-fg text-on-primary" : "text-fg-dim hover:text-fg",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {client === "claude-code" && <CopyBox label="Terminal" value={cli} />}
+            {client === "codex" && <CopyBox label="~/.codex/config.toml" value={codex} multiline />}
+            {client === "other" && <CopyBox label="MCP config (Claude Desktop, Cursor, …)" value={mcpJson} multiline />}
+          </div>
+
           <p className="text-[10px] text-fg-faint">
-            Loopback only · the token persists across restarts · set <span className="mono">SUBSTRATE_MCP_TOKEN</span> to
-            pin your own. Agents edit prompts only — there are no editable pixels.
+            Loopback only · token persists across restarts (<span className="mono">SUBSTRATE_MCP_TOKEN</span> to pin) ·
+            agents edit prompts only, never pixels.
           </p>
         </div>
       </div>

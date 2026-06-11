@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./lib/api.js";
 import { useServerEvents } from "./lib/ws.js";
@@ -12,11 +12,30 @@ import { KeyGate } from "./components/KeyGate.js";
 
 export default function App() {
   const activeDeckId = useEditor((s) => s.activeDeckId);
+  const setActiveDeck = useEditor((s) => s.setActiveDeck);
   const setMcpClients = useEditor((s) => s.setMcpClients);
   const togglePalette = useEditor((s) => s.togglePalette);
   const notice = useEditor((s) => s.notice);
   const setNotice = useEditor((s) => s.setNotice);
+  const agentActivity = useEditor((s) => s.agentActivity);
   useServerEvents(activeDeckId, setMcpClients);
+
+  // Follow a 3rd-party agent: when one starts driving a deck you're not viewing
+  // (e.g. Claude Code over MCP just created one), jump to its canvas so you watch
+  // the build live. Fires once per agent session — it won't yank you back if you
+  // navigate away afterward.
+  const followedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = agentActivity?.deckId ?? null;
+    if (!id) {
+      followedRef.current = null;
+      return;
+    }
+    if (id !== followedRef.current) {
+      followedRef.current = id;
+      if (id !== activeDeckId) setActiveDeck(id);
+    }
+  }, [agentActivity?.deckId, activeDeckId, setActiveDeck]);
 
   // ⌘K / Ctrl+K opens the command palette anywhere (keyboard-primary input).
   useEffect(() => {

@@ -1,11 +1,24 @@
 import { create } from "zustand";
 import type { Quality } from "@substrate/contracts";
 
+/** One narrated step of an in-app agent run, streamed live to the Assistant feed. */
+export interface AgentStep {
+  id: string;
+  label: string;
+  detail: string | null;
+}
+
 /** Editor-local UI state (PRD §9 — Zustand for editor state). */
 interface EditorState {
   activeDeckId: string | null;
   activeSlideId: string | null;
   mcpClients: number;
+  /** The deck an MCP agent is actively driving right now (+ its name), or null
+   *  when no agent is working. Drives the "an agent is at the controls" UI. */
+  agentActivity: { deckId: string; agent: string } | null;
+  /** Live narration of the in-app agent's steps for one deck — what it's doing as
+   *  it builds/revises (set the title, added a slide "…", read a file, …). */
+  agentSteps: { deckId: string; steps: AgentStep[] } | null;
   /** Live WS link health — false while the socket is down/reconnecting. */
   wsConnected: boolean;
   quality: Quality;
@@ -20,6 +33,11 @@ interface EditorState {
   setActiveDeck: (id: string | null) => void;
   setActiveSlide: (id: string | null) => void;
   setMcpClients: (n: number) => void;
+  setAgentActivity: (a: { deckId: string; agent: string } | null) => void;
+  /** Reset the live step feed for a fresh agent session on a deck. */
+  startAgentSteps: (deckId: string) => void;
+  /** Append one narrated step (capped) to the live feed for a deck. */
+  pushAgentStep: (deckId: string, label: string, detail: string | null) => void;
   setWsConnected: (on: boolean) => void;
   setQuality: (q: Quality) => void;
   setThinking: (on: boolean) => void;
@@ -36,6 +54,8 @@ export const useEditor = create<EditorState>((set) => ({
   activeDeckId: null,
   activeSlideId: null,
   mcpClients: 0,
+  agentActivity: null,
+  agentSteps: null,
   wsConnected: true,
   quality: "instant",
   showHistory: false,
@@ -48,6 +68,14 @@ export const useEditor = create<EditorState>((set) => ({
   setActiveDeck: (id) => set({ activeDeckId: id, activeSlideId: null }),
   setActiveSlide: (id) => set({ activeSlideId: id, showHistory: false }),
   setMcpClients: (n) => set({ mcpClients: n }),
+  setAgentActivity: (a) => set({ agentActivity: a }),
+  startAgentSteps: (deckId) => set({ agentSteps: { deckId, steps: [] } }),
+  pushAgentStep: (deckId, label, detail) =>
+    set((s) => {
+      const prior = s.agentSteps && s.agentSteps.deckId === deckId ? s.agentSteps.steps : [];
+      const step: AgentStep = { id: crypto.randomUUID(), label, detail };
+      return { agentSteps: { deckId, steps: [...prior, step].slice(-60) } };
+    }),
   setWsConnected: (on) => set({ wsConnected: on }),
   setQuality: (q) => set({ quality: q }),
   // `thinking` is derived from quality, never stored — one source of truth.

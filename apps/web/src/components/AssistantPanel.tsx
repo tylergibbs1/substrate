@@ -1,7 +1,10 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, ArrowUp, Check, AlertCircle } from "lucide-react";
 import { api } from "../lib/api.js";
+import { useEditor } from "../store.js";
+import { Anthropic } from "./Anthropic.js";
+import { OpenAI } from "./OpenAI.js";
 import { Button } from "../ui.js";
 import type { DeckDetail } from "@substrate/contracts";
 
@@ -24,6 +27,16 @@ export function AssistantPanel({ detail }: { detail: DeckDetail }) {
   const qc = useQueryClient();
   const [input, setInput] = useState("");
   const [runs, setRuns] = useState<Run[]>([]);
+
+  // Live narration of the in-app agent's run on THIS deck (build or revise).
+  const agentStepsState = useEditor((s) => s.agentSteps);
+  const agentActivity = useEditor((s) => s.agentActivity);
+  const steps = agentStepsState?.deckId === detail.deck.id ? agentStepsState.steps : [];
+  const agentLive = agentActivity?.deckId === detail.deck.id;
+
+  // Which model is actually driving the in-app agent (configured in Settings).
+  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
+  const provider = settings.data?.agentProvider === "openai" ? "OpenAI" : "Anthropic";
 
   const revise = useMutation({
     mutationFn: (instruction: string) => api.reviseDeck(detail.deck.id, instruction),
@@ -54,8 +67,46 @@ export function AssistantPanel({ detail }: { detail: DeckDetail }) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      {/* Which model is at the controls — visible insight into the in-app agent. */}
+      <div
+        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 border-b border-line mono text-[10px] text-fg-faint"
+        title={`The in-app agent runs on ${settings.data?.agentModel ?? "…"} via ${provider}. Change it in Settings.`}
+      >
+        {settings.data?.agentProvider === "openai" ? (
+          <OpenAI className="w-3 h-3 shrink-0 text-fg-dim" />
+        ) : (
+          <Anthropic className="w-3 h-3 shrink-0 text-fg-dim" />
+        )}
+        <span className="text-fg-dim truncate">{settings.data?.agentModel ?? "—"}</span>
+        <span className="text-fg-faint">· {provider}</span>
+      </div>
       <div className="flex-1 overflow-auto p-3 space-y-3">
-        {runs.length === 0 && (
+        {/* Live narration — what the agent is doing right now, streamed step by step. */}
+        {(agentLive || steps.length > 0) && (
+          <div className="rounded-lg border border-agent-soft bg-agent-wash p-2.5 space-y-1.5">
+            <div className="flex items-center gap-1.5 mono text-[10px] uppercase tracking-wider text-agent">
+              {agentLive ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+              {agentLive ? "Agent working" : "Agent finished"}
+            </div>
+            <ul className="space-y-1">
+              {steps.map((s, i) => (
+                <li key={s.id} className="flex items-center gap-1.5 text-[11px] text-fg-dim">
+                  {agentLive && i === steps.length - 1 ? (
+                    <Loader2 size={10} className="shrink-0 animate-spin text-agent" />
+                  ) : (
+                    <Check size={10} className="shrink-0 text-ok" />
+                  )}
+                  <span className="min-w-0 truncate leading-snug" title={s.detail ? `${s.label} — ${s.detail}` : s.label}>
+                    <span className="text-fg">{s.label}</span>
+                    {s.detail && <span className="text-fg-faint"> — {s.detail}</span>}
+                  </span>
+                </li>
+              ))}
+              {steps.length === 0 && agentLive && <li className="text-[11px] text-fg-faint">starting…</li>}
+            </ul>
+          </div>
+        )}
+        {runs.length === 0 && !agentLive && steps.length === 0 && (
           <p className="text-[12px] text-fg-faint leading-relaxed">
             Ask the agent to revise this deck — e.g. “make the title bolder”, “add a pricing slide before the close”,
             “tighten every headline to under 6 words”. It edits the slides directly; turn on Review to approve each change.
@@ -110,7 +161,7 @@ export function AssistantPanel({ detail }: { detail: DeckDetail }) {
           />
           <div className="flex items-center justify-between px-2 pb-1.5">
             <span className="mono text-[10px] text-fg-faint">⌘↵ to send</span>
-            <Button variant="primary" onClick={send} disabled={!input.trim() || revise.isPending}>
+            <Button variant="default" onClick={send} disabled={!input.trim() || revise.isPending}>
               {revise.isPending ? <Loader2 size={13} className="animate-spin" /> : <ArrowUp size={13} />}
             </Button>
           </div>

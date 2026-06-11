@@ -251,6 +251,9 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     );
     const buildError = (message: string) =>
       run(Effect.flatMap(Events, (e) => e.publish({ type: "deck-error", deckId, message })));
+    // Stream each agent step live so the Assistant panel narrates the build.
+    const emitStep = (label: string, detail: string | null) =>
+      void run(Effect.flatMap(Events, (e) => e.publish({ type: "agent-step", deckId, agent: "deck-builder", label, detail })));
     void buildDeckInto({
       deckId,
       description,
@@ -259,6 +262,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       model: resolved.agentModel,
       openaiApiKey: resolved.openaiApiKey,
       anthropicApiKey: resolved.anthropicApiKey,
+      onStep: emitStep,
     })
       .then((r) => {
         // Surface a half-built deck instead of leaving the user staring at gaps.
@@ -314,6 +318,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
             model: resolved.agentModel,
             openaiApiKey: resolved.openaiApiKey,
             anthropicApiKey: resolved.anthropicApiKey,
+            onStep: (label, detail) =>
+              void run(Effect.flatMap(Events, (e) => e.publish({ type: "agent-step", deckId, agent: "deck-builder", label, detail }))),
           }),
         );
       } catch (e) {

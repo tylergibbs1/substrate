@@ -27,7 +27,7 @@ export function Wordmark({ size = 26, className }: { size?: number; className?: 
   return (
     <span className={cn("inline-flex items-center gap-2.5 text-fg select-none", className)}>
       <Mark size={size} />
-      <span className="text-[19px] font-medium lowercase tracking-[-0.04em]">substrate</span>
+      <span className="text-[19px] font-normal lowercase tracking-[-0.04em]">substrate</span>
     </span>
   );
 }

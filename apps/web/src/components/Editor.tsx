@@ -20,6 +20,7 @@ export function Editor({ deckId }: { deckId: string }) {
   const activeSlideId = useEditor((s) => s.activeSlideId);
   const setActiveSlide = useEditor((s) => s.setActiveSlide);
   const paletteOpen = useEditor((s) => s.paletteOpen);
+  const agentActivity = useEditor((s) => s.agentActivity);
   const actions = useSlideActions(deckId);
 
   // Auto-select the first slide when none is active.
@@ -28,6 +29,15 @@ export function Editor({ deckId }: { deckId: string }) {
       setActiveSlide(deck.data.slides[0]!.id);
     }
   }, [activeSlideId, deck.data, setActiveSlide]);
+
+  // Follow the agent: while a 3rd-party agent is driving THIS deck, jump the
+  // canvas to its newest slide as each one is added, so you watch the build live.
+  const agentOnThisDeck = agentActivity?.deckId === deckId;
+  const slideCount = deck.data?.slides.length ?? 0;
+  useEffect(() => {
+    if (!agentOnThisDeck || slideCount === 0) return;
+    setActiveSlide(deck.data!.slides[slideCount - 1]!.id);
+  }, [agentOnThisDeck, slideCount, setActiveSlide]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Generate display titles for any untitled slides (once each). The server
   // derives them with the title model and emits a deck-changed event, which

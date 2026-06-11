@@ -108,7 +108,7 @@ export function DeckPicker() {
           type="button"
           onClick={() => setConnectOpen(true)}
           title="Already have Claude Code, Codex, or another MCP agent you pay for? Connect it to build decks over MCP."
-          className="inline-flex items-center gap-1.5 rounded-lg h-8 px-2.5 text-[12px] text-fg-faint hover:text-fg hover:bg-ink-2 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-full h-8 px-2.5 text-[12px] text-fg-faint hover:text-fg hover:bg-ink-2 transition-colors"
         >
           <Plug size={14} /> Use your own agent
         </button>
@@ -117,12 +117,12 @@ export function DeckPicker() {
           onClick={() => setSettingsOpen(true)}
           aria-label="Settings"
           title="Settings"
-          className="grid place-items-center w-8 h-8 rounded-lg text-fg-faint hover:text-fg hover:bg-ink-2 transition-colors"
+          className="grid place-items-center w-8 h-8 rounded-full text-fg-faint hover:text-fg hover:bg-ink-2 transition-colors"
         >
           <Settings size={16} />
         </button>
       </div>
-      <div className="max-w-2xl mx-auto px-6 pt-[10vh] pb-16 grid gap-10">
+      <div className="max-w-2xl mx-auto px-6 pt-[10vh] pb-16 grid gap-12">
         {/* Brand mark — quiet, centered above the work surface (§7.3 chrome recedes). */}
         <Wordmark size={30} className="mx-auto" />
 
@@ -138,7 +138,7 @@ export function DeckPicker() {
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
-              className="mx-auto flex items-center gap-2 rounded-full border border-[color-mix(in_oklab,var(--color-warn)_40%,transparent)] bg-[color-mix(in_oklab,var(--color-warn)_8%,transparent)] px-3 py-1.5 text-[11px] text-warn hover:brightness-110 transition"
+              className="mx-auto flex items-center gap-2 rounded-full border border-[color-mix(in_oklab,var(--color-warn)_40%,transparent)] bg-[color-mix(in_oklab,var(--color-warn)_8%,transparent)] px-3 py-1.5 text-[11px] text-warn hover:brightness-110 transition-[filter]"
             >
               <KeyRound size={12} />
               Using the offline preview renderer — add your OpenAI API key to render with GPT Image 2
@@ -146,7 +146,7 @@ export function DeckPicker() {
           )}
 
           {/* One bordered object — title, prompt, control bar — like a single input. */}
-          <div className="rounded-xl border border-line bg-ink-2 focus-within:border-fg-faint transition-colors">
+          <div className="rounded-lg border border-line bg-ink-2 focus-within:border-fg-faint transition-colors">
             {/* Title + body keep a constant height across modes so toggling the
                 agent doesn't shift the footer and everything below it. */}
             <input

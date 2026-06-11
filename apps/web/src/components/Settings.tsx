@@ -20,7 +20,7 @@ export function Settings() {
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between px-4 h-11 border-b border-line">
-          <span className="flex items-center gap-2 text-[13px] font-medium">
+          <span className="flex items-center gap-2 text-[13px] font-normal">
             <Key size={14} className="text-accent" /> Settings
           </span>
           <IconButton label="Close" onClick={() => setOpen(false)} className="-mr-1">

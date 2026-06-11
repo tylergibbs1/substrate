@@ -89,7 +89,7 @@ export function IconButton({
  */
 export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <span className={cn("mono text-[10px] uppercase tracking-wider text-fg-faint", className)}>{children}</span>
+    <span className={cn("mono text-[10px] uppercase tracking-eyebrow text-fg-faint", className)}>{children}</span>
   );
 }
 
@@ -146,7 +146,7 @@ export function Chip({
   return (
     <span
       className={cn(
-        "mono inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider",
+        "mono inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-eyebrow",
         CHIP_TONES[tone],
         className,
       )}

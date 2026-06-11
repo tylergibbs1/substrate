@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cx } from "../ui.js";
+import { useEditor } from "../store.js";
 import { Inspector } from "./Inspector.js";
 import { AssistantPanel } from "./AssistantPanel.js";
 import type { DeckDetail, Slide } from "@substrate/contracts";
@@ -10,7 +11,15 @@ import type { DeckDetail, Slide } from "@substrate/contracts";
  * dominant and chrome recedes, rather than adding a competing panel (PRD §7).
  */
 export function RightRail({ detail, slide }: { detail: DeckDetail; slide: Slide | null }) {
-  const [tab, setTab] = useState<"inspector" | "assistant">("inspector");
+  const [tab, setTab] = useState<"inspector" | "assistant">("assistant");
+  const agentDeck = useEditor((s) => s.agentActivity?.deckId);
+
+  // When an agent starts driving this deck, surface the Assistant tab so its live
+  // narration is visible. Fires once per session — the user can switch back.
+  useEffect(() => {
+    if (agentDeck === detail.deck.id) setTab("assistant");
+  }, [agentDeck, detail.deck.id]);
+
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex shrink-0 border-b border-line">

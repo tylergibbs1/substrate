@@ -261,6 +261,16 @@ export const ServerEvent = Schema.Union([
   /** A background agent build failed or stopped short — surfaced so the user isn't
    *  left staring at a silently empty/partial deck. */
   Schema.Struct({ type: Schema.Literal("deck-error"), deckId: NonEmpty, message: Schema.String }),
+  /** One step the in-app agent took, streamed live so the user watches it work:
+   *  a friendly `label` ("Added a slide") + optional `detail` (the slide headline,
+   *  a file it read, …). The Assistant panel renders these as a live feed. */
+  Schema.Struct({
+    type: Schema.Literal("agent-step"),
+    deckId: NonEmpty,
+    agent: Schema.String,
+    label: NonEmpty,
+    detail: Schema.NullOr(Schema.String),
+  }),
 ]);
 export type ServerEvent = typeof ServerEvent.Type;
 

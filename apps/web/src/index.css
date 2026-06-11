@@ -10,11 +10,11 @@
  */
 @theme {
   --color-ink-0: #0a0a0a;   /* canvas — deepest page bg */
-  --color-ink-1: #0d0e10;   /* panel — a hair above canvas */
+  --color-ink-1: #0a0a0a;   /* DESIGN.md has no panel surface — rails are canvas + hairline */
   --color-ink-2: #191919;   /* canvas-card — raised surface / cards */
   --color-ink-3: #1a1c20;   /* canvas-soft — hover / input fill */
   --color-line: #212327;    /* hairline divider/border */
-  --color-line-2: #2c2f35;  /* stronger border */
+  --color-line-2: #212327;  /* DESIGN.md mandates ONE border level — hairline carries all elevation */
 
   --color-fg: #ffffff;      /* ink — primary text */
   --color-fg-dim: #dadbdf;  /* body — secondary text */
@@ -24,9 +24,12 @@
   --color-accent-dim: #3a2410;
   --color-agent: #7c3aed;   /* accent-dusk — agent attribution */
   --color-busy: #a0c3ec;    /* accent-breeze — work in flight (distinct from accent) */
-  --color-warn: #e6b450;    /* amber — distinct from the sunset accent above */
+  --color-warn: #ffc285;    /* accent-sunset-soft — caution uses the brand sunset, not amber */
   --color-danger: #f08a8a;  /* kept readable red */
   --color-ok: #7ed3a3;      /* kept readable green */
+
+  /* DESIGN.md eyebrow/caption: GeistMono uppercase, +1.2–1.4px tracking. */
+  --tracking-eyebrow: 0.12em;
 
   /* Illustrative accent palette (DESIGN.md) — rare, for chips/illustrations. */
   --color-accent-dusk: #7c3aed;

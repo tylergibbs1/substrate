@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, Sparkles, ShieldCheck } from "lucide-react";
 import { api } from "../lib/api.js";
+import { Anthropic } from "./Anthropic.js";
+import { OpenAI } from "./OpenAI.js";
 import { Button, Chip, Eyebrow, cx } from "../ui.js";
 
 /**
@@ -72,7 +74,7 @@ export function ApiKeyForm() {
         />
         <div className="flex items-center gap-2 pt-0.5">
           <Button
-            variant="primary"
+            variant="default"
             disabled={!openaiKey.trim() || save.isPending}
             onClick={() => {
               save.mutate({ openaiApiKey: openaiKey.trim() });
@@ -101,11 +103,12 @@ export function ApiKeyForm() {
               onClick={() => save.mutate({ agentProvider: p })}
               aria-pressed={data?.agentProvider === p}
               className={cx(
-                "flex-1 rounded-full px-2 py-1 transition-colors",
+                "flex-1 inline-flex items-center justify-center gap-1.5 rounded-full px-2 py-1 transition-colors",
                 data?.agentProvider === p ? "bg-fg text-on-primary" : "text-fg-dim hover:text-fg",
               )}
             >
-              {p === "anthropic" ? "Anthropic (Claude)" : "OpenAI"}
+              {p === "anthropic" ? <Anthropic className="w-3 h-3 shrink-0" /> : <OpenAI className="w-3 h-3 shrink-0" />}
+              {p === "anthropic" ? "Anthropic" : "OpenAI"}
             </button>
           ))}
         </div>
@@ -166,7 +169,7 @@ export function ApiKeyForm() {
           />
           <div className="flex items-center gap-2">
             <Button
-              variant="primary"
+              variant="default"
               disabled={!anthropicKey.trim() || save.isPending}
               onClick={() => {
                 save.mutate({ anthropicApiKey: anthropicKey.trim() });
