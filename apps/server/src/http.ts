@@ -289,27 +289,40 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     emitRun(true);
     void (async () => {
       try {
-        const r = await buildDeckInto({
-          deckId,
-          description,
-          lockDesign,
-          ...(contextPaths.length ? { contextPaths } : {}),
-          ...agentCfg,
-          onStep: emitStep,
-        });
-        // A half-built deck isn't worth a polish pass — surface it and stop.
-        if (r.truncated) {
-          void buildError("The agent stopped before finishing — the deck may be incomplete. Use the Assistant to continue.");
+        // The build itself: a failure here IS a build failure the user should see.
+        try {
+          const r = await buildDeckInto({
+            deckId,
+            description,
+            lockDesign,
+            ...(contextPaths.length ? { contextPaths } : {}),
+            ...agentCfg,
+            onStep: emitStep,
+          });
+          if (r.truncated) {
+            void buildError("The agent stopped before finishing — the deck may be incomplete. Use the Assistant to continue.");
+            return;
+          }
+        } catch (e) {
+          runtime.runFork(Effect.logError(`deck-builder agent failed for ${deckId}`, e));
+          void buildError(e instanceof Error ? e.message : "The agent failed to build this deck.");
           return;
         }
-        // Close the agent's loop: once the slides have rendered, a vision pass
-        // where the agent SEES each render and fixes the 1-2 worst.
-        emitStep("Rendering the deck", null);
-        await waitForDeckRenders();
-        await polishDeck({ deckId, ...agentCfg, onStep: emitStep });
-      } catch (e) {
-        runtime.runFork(Effect.logError(`deck-builder agent failed for ${deckId}`, e));
-        void buildError(e instanceof Error ? e.message : "The agent failed to build this deck.");
+        // Close the agent's loop with a BEST-EFFORT vision polish pass on the
+        // finished, persisted deck. Its failures are logged, NEVER surfaced as a
+        // build error — the deck is already complete and rendered.
+        try {
+          emitStep("Rendering the deck", null);
+          await waitForDeckRenders();
+          const detail = await run(Effect.flatMap(Decks, (d) => d.getDeckDetail(deckId)));
+          const rendered = detail?.slides.filter((s) => s.jobStatus === "done").length ?? 0;
+          if (rendered > 0) {
+            await polishDeck({ deckId, ...agentCfg, onStep: emitStep });
+            await waitForDeckRenders(); // let the polish's own fix re-renders finish
+          }
+        } catch (e) {
+          runtime.runFork(Effect.logError(`polish pass failed for ${deckId}`, e));
+        }
       } finally {
         emitRun(false);
       }

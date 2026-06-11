@@ -427,6 +427,7 @@ Catch and fix the 1-2 WORST rendering failures, nothing more. Image models garbl
 <constraints>
 - Fix AT MOST 2 slides. If every slide reads cleanly, change NOTHING and say so.
 - Don't rewrite slides that are already good; don't redesign the deck or add/remove slides.
+- If get_slide_render reports a slide is "not rendered yet", that slide FAILED to render — leave it alone, do NOT regenerate it (it would just fail again).
 - One tool call at a time. When done, state in ONE line what you fixed (or that the deck was clean).
 - Work only on this deck.
 </constraints>`;
@@ -435,6 +436,27 @@ export async function polishDeck(opts: { deckId: string; onStep: StepEmit } & Ag
   const mcp = await connectAgentMcp();
   try {
     const tools = scopeTools(await mcp.tools(), opts.deckId, POLISH_TOOLS);
+    // Hard cap: the prompt says "at most 2 fixes", but enforce it so a misbehaving
+    // or prompt-injected model can't silently re-render the whole deck.
+    let fixes = 0;
+    for (const name of ["edit_slide_prompt", "regenerate_slide"]) {
+      const t = tools[name];
+      if (!t || typeof t.execute !== "function") continue;
+      const orig = t.execute as (i: unknown, o: unknown) => unknown;
+      tools[name] = {
+        ...t,
+        execute: (input: unknown, options: unknown) => {
+          if (fixes >= 2) {
+            return Promise.resolve({
+              content: [{ type: "text", text: "Polish limit reached: at most 2 slides may be fixed. Stop and report what you fixed." }],
+              isError: true,
+            });
+          }
+          fixes++;
+          return orig(input, options);
+        },
+      };
+    }
     await generateText({
       model: agentModel(opts),
       messages: [
@@ -446,6 +468,16 @@ export async function polishDeck(opts: { deckId: string; onStep: StepEmit } & Ag
         { role: "user", content: `deck_id: ${opts.deckId}\n\nDo the final quality pass: view every slide and fix only the 1-2 worst.` },
       ],
       tools,
+      // The agent accumulates one image per slide it views; a rolling ephemeral
+      // cache breakpoint on the last message keeps those from being re-billed
+      // every step (Anthropic dynamic caching), so cost stays ~O(N) not O(N^2).
+      prepareStep: ({ messages }) => ({
+        messages: messages.map((m, i) =>
+          i === messages.length - 1
+            ? { ...m, providerOptions: { ...m.providerOptions, anthropic: { cacheControl: { type: "ephemeral" as const } } } }
+            : m,
+        ),
+      }),
       onStepFinish: ({ toolCalls }) => {
         for (const call of toolCalls) {
           const d = describeToolCall(call.toolName, call.input);
