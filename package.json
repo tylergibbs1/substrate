@@ -16,6 +16,7 @@
     "build:dist": "pnpm --filter @substrate/web build && pnpm --filter @substrate/server build",
     "dist": "pnpm build:dist && pnpm --filter @substrate/desktop dist",
     "dist:dir": "pnpm build:dist && pnpm --filter @substrate/desktop dist:dir",
+    "release": "bash scripts/release.sh",
     "mcp": "pnpm --filter @substrate/server mcp",
     "typecheck": "pnpm -r typecheck",
     "tc": "pnpm -r typecheck",
