@@ -1,6 +1,6 @@
 {
   "name": "@substrate/monorepo",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "Desktop app for AI-generated raster slide decks where the prompt is the only editable artifact. Stack & conventions modeled on pingdotgg/t3code.",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "name": "@substrate/desktop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "Electron shell that bundles the Substrate server and web editor.",
   "main": "main.js",
