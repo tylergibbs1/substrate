@@ -233,10 +233,14 @@ const make = Effect.gen(function* () {
   // Not-found / invalid-state are defects here: callers pass ids that must exist.
   const die = (message: string) => Effect.die(new Error(message));
 
-  // Seed built-in presets once (PRD §6.1).
+  // Seed built-in presets, refreshing name/description/design_prompt on every
+  // boot so improved preset prompts propagate to existing installs (an existing
+  // deck keeps the design prompt it already snapshotted at creation; only the
+  // preset TEMPLATES update, affecting new decks).
   for (const p of DESIGN_PRESETS) {
     yield* sql.run(
-      "INSERT OR IGNORE INTO design_presets (id, name, description, design_prompt, style_ref_blob, is_default) VALUES (?, ?, ?, ?, NULL, ?)",
+      "INSERT INTO design_presets (id, name, description, design_prompt, style_ref_blob, is_default) VALUES (?, ?, ?, ?, NULL, ?) " +
+        "ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, design_prompt = excluded.design_prompt, is_default = excluded.is_default",
       [p.id, p.name, p.description, p.designPrompt, p.isDefault ? 1 : 0],
     );
   }
