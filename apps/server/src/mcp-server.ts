@@ -6,7 +6,7 @@ import * as Effect from "effect/Effect";
 import type { Author } from "@substrate/contracts";
 import { Decks, type DecksShape } from "./Decks.ts";
 import { blobExists, blobPath } from "./util.ts";
-import { resolveDesignSource } from "./DesignImport.ts";
+import { resolveDesignSource, designRegistry } from "./DesignImport.ts";
 import { runtime } from "./runtime.ts";
 
 /**
@@ -46,8 +46,19 @@ export function buildMcpServer(agentName?: string): McpServer {
 
   server.registerTool(
     "list_design_presets",
-    { title: "List design presets", description: "List available design presets (Apple-style is default).", inputSchema: {} },
+    { title: "List design presets", description: "List the built-in design presets (Apple-style is default). For a named brand/company look (Stripe, Linear, Vercel, …), use list_design_md instead.", inputSchema: {} },
     async () => ok(await withDecks((d) => d.listPresets)),
+  );
+
+  server.registerTool(
+    "list_design_md",
+    {
+      title: "List DESIGN.md designs",
+      description:
+        "List the curated DESIGN.md design systems (the getdesign.md / awesome-design-md collection — named brand/company looks like Stripe, Linear, Vercel, Notion). Each item has a `slug` and display `name`. Pass a chosen slug to set_design_from_md to apply that whole design system to a deck.",
+      inputSchema: {},
+    },
+    async () => ok(designRegistry()),
   );
 
   server.registerTool(
@@ -124,7 +135,7 @@ export function buildMcpServer(agentName?: string): McpServer {
     {
       title: "Set design from DESIGN.md",
       description:
-        "Compile a DESIGN.md / design-system spec into the deck's main design prompt and apply it (re-renders the deck). Pass the raw DESIGN.md text, or a URL to fetch it. mode 'direct' applies; 'propose' lands a suggestion for human review.",
+        "Compile a DESIGN.md / design-system spec into the deck's main design prompt and apply it (re-renders the deck). Pass a `slug` from list_design_md (e.g. \"stripe\", \"linear.app\"), the raw DESIGN.md text, or a getdesign.md URL. mode 'direct' applies; 'propose' lands a suggestion for human review.",
       inputSchema: {
         deck_id: z.string(),
         design_md: z.string(),

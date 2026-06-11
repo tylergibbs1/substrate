@@ -215,9 +215,20 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       aspectRatio?: AspectRatio;
       designPresetId?: string;
       designPrompt?: string;
+      contextPath?: string;
     };
     const description = (body.description ?? "").trim();
     if (!description) return json(res, 400, { error: "description required" });
+    // Optional file context the agent may explore (read-only, sandboxed server-side).
+    // Validate synchronously up front so a bad path fails the request, not silently.
+    const contextPath = typeof body.contextPath === "string" ? body.contextPath.trim() : "";
+    if (contextPath) {
+      try {
+        fs.statSync(contextPath);
+      } catch {
+        return json(res, 400, { error: "That context path doesn't exist or isn't readable." });
+      }
+    }
     const resolved = await run(Effect.flatMap(Settings, (s) => s.resolve));
     // Rendering always needs an OpenAI key (gpt-image-2); the agent additionally
     // needs its provider's key (Anthropic Claude by default) — all set in Settings.
@@ -243,6 +254,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     void buildDeckInto({
       deckId,
       description,
+      ...(contextPath ? { contextPath } : {}),
       provider: resolved.agentProvider,
       model: resolved.agentModel,
       openaiApiKey: resolved.openaiApiKey,

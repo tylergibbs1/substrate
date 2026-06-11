@@ -247,6 +247,16 @@ export const ServerEvent = Schema.Union([
     job: Job,
   }),
   Schema.Struct({ type: Schema.Literal("mcp-clients"), count: Schema.Int }),
+  /** An agent (over MCP) is actively driving a deck. Emitted `active: true` on the
+   *  leading edge of agent activity and `active: false` after it goes idle, so the
+   *  editor can visibly reflect that an agent — not the human — is at the controls.
+   *  `agent` is the connecting client's self-reported name (x-agent-name). */
+  Schema.Struct({
+    type: Schema.Literal("agent-activity"),
+    deckId: NonEmpty,
+    agent: Schema.String,
+    active: Schema.Boolean,
+  }),
   Schema.Struct({ type: Schema.Literal("pending-edits-changed"), deckId: NonEmpty }),
   /** A background agent build failed or stopped short — surfaced so the user isn't
    *  left staring at a silently empty/partial deck. */

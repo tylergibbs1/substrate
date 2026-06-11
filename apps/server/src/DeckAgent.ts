@@ -1,9 +1,11 @@
-import { generateText, stepCountIs, type ToolSet } from "ai";
+import { generateText, stepCountIs, tool, type ToolSet } from "ai";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
+import { z } from "zod";
 import { config } from "./Config.ts";
 import type { AgentProvider } from "./Settings.ts";
+import { openFileContext, type FileContext } from "./FileContext.ts";
 
 /**
  * The in-app "describe your deck" agent. It is just another MCP client: it
@@ -101,7 +103,9 @@ function agentModel(a: AgentConfig) {
 }
 
 /** Connect to Substrate's own MCP server as a client; its tools become the agent's
- *  tools. Auth + agent identity ride along in the request headers. */
+ *  tools. Auth + agent identity ride along in the request headers. (Read-only file
+ *  tools are provided to the in-app agent DIRECTLY via fileTools(), not over MCP,
+ *  so a file context never has to be serialized into a transport header.) */
 function connectAgentMcp() {
   return createMCPClient({
     transport: {
@@ -158,20 +162,59 @@ function scopeTools(all: ToolSet, deckId: string, allow: ReadonlyArray<string>):
   return out;
 }
 
+/** Read-only file-exploration tools (codex/opencode-style), sandboxed to a
+ *  user-chosen root, so the agent can ground a deck in the user's real material. */
+function fileTools(ctx: FileContext): ToolSet {
+  return {
+    list_dir: tool({
+      description: "List the entries of a directory in the attached file context. `path` is relative to the context root (omit for the root). Directories end with '/'.",
+      inputSchema: z.object({ path: z.string().optional() }),
+      execute: ({ path }) => ctx.listDir(path),
+    }),
+    read_file: tool({
+      description: "Read a text file from the attached file context (returned line-numbered). `path` is relative to the context root. Use offset (1-indexed line) and limit to page through large files.",
+      inputSchema: z.object({ path: z.string(), offset: z.number().int().optional(), limit: z.number().int().optional() }),
+      execute: ({ path, offset, limit }) => ctx.readFile(path, offset, limit),
+    }),
+    glob: tool({
+      description: "Find files by glob pattern (e.g. '**/*.md', 'data/*.csv') within the attached file context.",
+      inputSchema: z.object({ pattern: z.string(), path: z.string().optional() }),
+      execute: ({ pattern, path }) => ctx.glob(pattern, path),
+    }),
+    grep: tool({
+      description: "Search file contents by regular expression within the attached file context. Optionally restrict to files matching `include` (a glob like '*.ts').",
+      inputSchema: z.object({ pattern: z.string(), path: z.string().optional(), include: z.string().optional() }),
+      execute: ({ pattern, path, include }) => ctx.grep(pattern, path, include),
+    }),
+  };
+}
+
+/** Open the file context (if a path was attached) and produce the extra tools +
+ *  a system-prompt note telling the agent to explore it before writing slides. */
+function withFileContext(contextPath: string | undefined): { tools: ToolSet; note: string } {
+  if (!contextPath) return { tools: {}, note: "" };
+  const ctx = openFileContext(contextPath); // throws if the path is gone/unreadable
+  const focus = ctx.focusRel ? ` The user pointed at the file "${ctx.focusRel}" — read it first.` : "";
+  const note = `\n\n<file_context>\nA read-only file context is attached.${focus} Before writing any slides, EXPLORE it with list_dir / glob / grep / read_file and ground the deck in the user's ACTUAL material — real numbers, names, structure, findings — never invented stand-ins. Paths are relative to the context root; you cannot read outside it.\n</file_context>`;
+  return { tools: fileTools(ctx), note };
+}
+
 export async function buildDeckInto(
-  opts: { deckId: string; description: string } & AgentConfig,
+  opts: { deckId: string; description: string; contextPath?: string } & AgentConfig,
 ): Promise<{ truncated: boolean }> {
   const mcp = await connectAgentMcp();
   try {
-    const tools = scopeTools(await mcp.tools(), opts.deckId, BUILD_TOOLS);
+    const fc = withFileContext(opts.contextPath);
+    const tools = { ...scopeTools(await mcp.tools(), opts.deckId, BUILD_TOOLS), ...fc.tools };
     const result = await generateText({
       model: agentModel(opts),
-      system: INSTRUCTIONS,
+      system: INSTRUCTIONS + fc.note,
       prompt: `deck_id: ${opts.deckId}\n\nDeck to build:\n${opts.description}`,
       tools,
       // Raised above worst case (title + design + ~12 slides + slack) so a normal
       // build never truncates; add_slide order is guaranteed atomically server-side.
-      stopWhen: stepCountIs(48),
+      // A file context adds exploration turns, so give extra headroom.
+      stopWhen: stepCountIs(opts.contextPath ? 72 : 48),
     });
     // A non-"stop" finish means the step cap cut the loop short — the deck is
     // partial; the caller surfaces it rather than leaving a silent half-build.

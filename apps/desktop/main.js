@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { app, BrowserWindow, nativeImage } from "electron";
+import { app, BrowserWindow, nativeImage, ipcMain, dialog } from "electron";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,7 +40,7 @@ function createWindow() {
     backgroundColor: "#08090b",
     titleBarStyle: "hiddenInset",
     icon: iconPath, // used on Windows/Linux; macOS uses the dock icon below
-    webPreferences: { contextIsolation: true },
+    webPreferences: { contextIsolation: true, preload: path.join(__dirname, "preload.cjs") },
   });
 
   // Load the app from the same loopback origin that serves the API/WS/blobs and
@@ -69,6 +69,17 @@ app.whenReady().then(async () => {
     const img = nativeImage.createFromPath(iconPath);
     if (!img.isEmpty()) app.dock.setIcon(img);
   }
+  // Native picker for attaching read-only file context to a deck. macOS lets the
+  // user choose a folder OR a single file; the server sandboxes whatever is picked.
+  ipcMain.handle("substrate:pickPath", async () => {
+    const win = BrowserWindow.getFocusedWindow();
+    const result = await dialog.showOpenDialog(win ?? undefined, {
+      properties: ["openFile", "openDirectory"],
+      message: "Choose a folder or file for the agent to read as context",
+    });
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+  });
+
   startServer();
   if (!isDev) await waitForServer(process.env.SUBSTRATE_PORT ?? "4321");
   createWindow();

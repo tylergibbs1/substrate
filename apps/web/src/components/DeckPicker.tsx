@@ -1,11 +1,19 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, ArrowRight, Loader2, Wand2, KeyRound, Sparkles, FileCode2, Settings, Plug } from "lucide-react";
+import { Plus, ArrowRight, Loader2, Wand2, KeyRound, Sparkles, FileCode2, Settings, Plug, FolderOpen, X } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useEditor } from "../store.js";
 import { Button, cx } from "../ui.js";
 import { Wordmark } from "./Mark.js";
 import type { AspectRatio } from "@substrate/contracts";
+
+// In the desktop shell, the preload bridge exposes a native folder/file picker.
+// In the dev browser it's absent, and we fall back to a typed path.
+declare global {
+  interface Window {
+    substrate?: { pickPath?: (opts?: { directory?: boolean }) => Promise<string | null> };
+  }
+}
 
 /**
  * Home / first run. A new deck starts by selecting a design (PRD §6.1), with
@@ -28,6 +36,19 @@ export function DeckPicker() {
   const [topic, setTopic] = useState("");
   const [aspect, setAspect] = useState<AspectRatio>("16:9");
   const [useAgent, setUseAgent] = useState(false);
+  const [contextPath, setContextPath] = useState("");
+  const [manualContext, setManualContext] = useState(false);
+
+  // Native folder/file picker in the desktop shell; typed-path input in the browser.
+  const pickContext = async () => {
+    const picker = window.substrate?.pickPath;
+    if (picker) {
+      const picked = await picker({ directory: true });
+      if (picked) setContextPath(picked);
+    } else {
+      setManualContext(true);
+    }
+  };
   const isCustom = presetId === "custom";
   const isDesignMd = presetId === "designmd";
   const registry = useQuery({ queryKey: ["designRegistry"], queryFn: api.designRegistry, enabled: isDesignMd, staleTime: Infinity });
@@ -68,6 +89,7 @@ export function DeckPicker() {
         aspectRatio: aspect,
         ...(isCustom || isDesignMd ? {} : { designPresetId: presetId }),
         ...(designPrompt ? { designPrompt } : {}),
+        ...(contextPath.trim() ? { contextPath: contextPath.trim() } : {}),
       });
     },
     onSuccess: ({ deckId }) => {
@@ -136,14 +158,48 @@ export function DeckPicker() {
             />
             <div className="min-h-[90px]">
               {useAgent ? (
-                <textarea
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  placeholder="Describe your deck — a topic, an audience, a goal. An agent designs the look and writes every slide."
-                  rows={3}
-                  aria-label="Deck topic"
-                  className="w-full bg-transparent px-4 pb-3 text-[15px] leading-relaxed text-fg placeholder:text-fg-faint outline-none resize-none"
-                />
+                <>
+                  <textarea
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    placeholder="Describe your deck — a topic, an audience, a goal. An agent designs the look and writes every slide."
+                    rows={3}
+                    aria-label="Deck topic"
+                    className="w-full bg-transparent px-4 pb-1 text-[15px] leading-relaxed text-fg placeholder:text-fg-faint outline-none resize-none"
+                  />
+                  {/* Optional file context — point the agent at a folder or file so it
+                      grounds the deck in your real material (read-only, sandboxed). */}
+                  <div className="px-4 pb-2.5">
+                    {manualContext ? (
+                      <div className="flex items-center gap-1.5">
+                        <FolderOpen size={12} className="text-fg-faint shrink-0" />
+                        <input
+                          autoFocus
+                          value={contextPath}
+                          onChange={(e) => setContextPath(e.target.value)}
+                          placeholder="/path/to/a/folder or a single file"
+                          aria-label="Context path"
+                          className="flex-1 bg-ink-3 border border-line-2 rounded-md px-2 py-1 text-[11px] mono outline-none focus:border-accent"
+                        />
+                        <button type="button" onClick={() => { setManualContext(false); setContextPath(""); }} className="text-fg-faint hover:text-fg shrink-0" aria-label="Cancel">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : contextPath ? (
+                      <div className="inline-flex items-center gap-1.5 max-w-full rounded-md bg-ink-3 border border-line px-2 py-1 text-[11px] text-fg-dim">
+                        <FolderOpen size={12} className="text-accent shrink-0" />
+                        <span className="mono truncate" title={contextPath}>{contextPath}</span>
+                        <button type="button" onClick={() => setContextPath("")} className="text-fg-faint hover:text-fg shrink-0" aria-label="Remove context">
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={pickContext} className="inline-flex items-center gap-1.5 text-[11px] text-fg-faint hover:text-fg transition-colors">
+                        <FolderOpen size={12} /> Add context — point the agent at a folder or file
+                      </button>
+                    )}
+                  </div>
+                </>
               ) : (
                 <p className="px-4 pt-1.5 pb-3 text-[12.5px] leading-relaxed text-fg-faint">
                   You'll start with a blank deck — add and write each slide yourself. Turn on the agent to have one built for you.
