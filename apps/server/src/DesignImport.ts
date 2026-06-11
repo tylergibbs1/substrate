@@ -51,26 +51,46 @@ function extractSlug(input: string): string | null {
   return null;
 }
 
+const FETCH_TIMEOUT_MS = 8000;
+
 export async function resolveDesignSource(input: string): Promise<string> {
   const trimmed = input.trim();
   const slug = extractSlug(trimmed);
-  const url =
-    slug && DESIGN_MD_SLUGS.includes(slug)
-      ? `${REPO_RAW}/${encodeURIComponent(slug)}/DESIGN.md`
-      : /^https?:\/\//i.test(trimmed)
-        ? trimmed
-        : null;
 
-  if (url === null) return trimmed; // pasted DESIGN.md text
-
-  let res: Response;
-  try {
-    res = await fetch(url, { headers: { accept: "text/markdown, text/plain, text/html" } });
-  } catch {
-    throw new Error(`Couldn't reach ${url} — paste the DESIGN.md text instead.`);
+  // SSRF guard: the ONLY URL we ever fetch is the trusted getdesign.md raw URL
+  // derived from a known slug. A getdesign.md link is reduced to its slug first,
+  // so a crafted host can't redirect the fetch. Arbitrary URLs are refused (the
+  // user pastes the DESIGN.md text instead); we never touch untrusted hosts.
+  if (slug && DESIGN_MD_SLUGS.includes(slug)) {
+    const url = `${REPO_RAW}/${encodeURIComponent(slug)}/DESIGN.md`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { accept: "text/markdown, text/plain" },
+        redirect: "error", // never follow a redirect off the trusted host
+        signal: controller.signal,
+      });
+    } catch {
+      throw new Error("Couldn't reach getdesign.md — paste the DESIGN.md text instead.");
+    } finally {
+      clearTimeout(timer);
+    }
+    // Generic, non-reflective errors so an unauthenticated caller can't use this
+    // as a scanning oracle (the real status/url is never the user's to probe).
+    if (!res.ok) throw new Error("Couldn't fetch that design — paste the DESIGN.md text instead.");
+    const text = (await res.text()).slice(0, 40000).trim();
+    if (!text) throw new Error("That design returned no content — paste the DESIGN.md text instead.");
+    return text;
   }
-  if (!res.ok) throw new Error(`Couldn't fetch that design (HTTP ${res.status}) — paste the DESIGN.md text instead.`);
-  const text = (await res.text()).slice(0, 40000).trim();
-  if (!text) throw new Error("That design returned no content — paste the DESIGN.md text instead.");
-  return text;
+
+  // Anything URL-like that isn't a known getdesign.md slug is refused outright —
+  // we do not fetch user-supplied hosts.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || trimmed.startsWith("//")) {
+    throw new Error("Only getdesign.md designs or pasted DESIGN.md text are supported.");
+  }
+
+  // Otherwise treat the input as pasted DESIGN.md text.
+  return trimmed;
 }

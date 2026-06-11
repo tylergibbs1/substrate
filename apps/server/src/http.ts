@@ -54,13 +54,13 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 
+/** Only loopback browser origins get CORS access; everything else is same-origin
+ *  (the server serves the web) or a non-browser client that needs no CORS. */
+const LOOPBACK_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
 function json(res: http.ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, {
-    "content-type": "application/json",
-    "access-control-allow-origin": "*",
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type, mcp-session-id, mcp-protocol-version, x-agent-name",
-  });
+  // CORS (loopback-only) is set once per request in the top-level handler.
+  res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
 }
 
@@ -133,7 +133,6 @@ function serveBlob(res: http.ServerResponse, ref: string): void {
   res.writeHead(200, {
     "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream",
     "cache-control": "public, max-age=31536000, immutable",
-    "access-control-allow-origin": "*",
   });
   fs.createReadStream(blobPath(ref)).pipe(res);
 }
@@ -239,6 +238,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         }),
       ),
     );
+    const buildError = (message: string) =>
+      run(Effect.flatMap(Events, (e) => e.publish({ type: "deck-error", deckId, message })));
     void buildDeckInto({
       deckId,
       description,
@@ -246,9 +247,15 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       model: resolved.agentModel,
       openaiApiKey: resolved.openaiApiKey,
       anthropicApiKey: resolved.anthropicApiKey,
-    }).catch((e) =>
-      runtime.runFork(Effect.logError(`deck-builder agent failed for ${deckId}`, e)),
-    );
+    })
+      .then((r) => {
+        // Surface a half-built deck instead of leaving the user staring at gaps.
+        if (r.truncated) void buildError("The agent stopped before finishing — the deck may be incomplete. Use the Assistant to continue.");
+      })
+      .catch((e) => {
+        runtime.runFork(Effect.logError(`deck-builder agent failed for ${deckId}`, e));
+        void buildError(e instanceof Error ? e.message : "The agent failed to build this deck.");
+      });
     return json(res, 201, { deckId });
   }
 
@@ -280,6 +287,9 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       if (resolved.agentProvider === "anthropic" && !resolved.anthropicApiKey) {
         return json(res, 400, { error: "Add an Anthropic API key in Settings to use the assistant (Claude), or switch the agent to OpenAI in Settings." });
       }
+      // Read review mode so destructive agent tools are withheld when it's on.
+      const deck = await run(Effect.flatMap(Decks, (d) => d.getDeck(deckId)));
+      if (!deck) return json(res, 404, { error: "deck not found" });
       try {
         return json(
           res,
@@ -287,6 +297,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
           await reviseDeck({
             deckId,
             instruction,
+            reviewMode: deck.reviewMode,
             provider: resolved.agentProvider,
             model: resolved.agentModel,
             openaiApiKey: resolved.openaiApiKey,
@@ -471,9 +482,19 @@ export async function startServer(): Promise<http.Server> {
   const httpServer = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", `http://localhost:${config.httpPort}`);
 
+    // CORS: the editor loads same-origin (the server serves the built web; dev
+    // proxies through Vite), so we only ever reflect a loopback Origin — never a
+    // wildcard. Non-browser clients (MCP, curl) send no Origin and need none.
+    // Together with the 127.0.0.1 bind below, this closes the cross-origin/LAN
+    // drive-by surface (a malicious web page or LAN device can't drive the API).
+    const origin = req.headers.origin;
+    if (origin && LOOPBACK_ORIGIN.test(origin)) {
+      res.setHeader("access-control-allow-origin", origin);
+      res.setHeader("vary", "origin");
+    }
+
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
-        "access-control-allow-origin": "*",
         "access-control-allow-methods": "GET,POST,OPTIONS",
         "access-control-allow-headers": "content-type, mcp-session-id, mcp-protocol-version, x-agent-name",
       });
@@ -533,7 +554,9 @@ export async function startServer(): Promise<http.Server> {
     ),
   );
 
-  await new Promise<void>((resolve) => httpServer.listen(config.httpPort, resolve));
+  // Bind to loopback only — Substrate is a local desktop app; nothing on the LAN
+  // should reach the API/MCP/WS surface.
+  await new Promise<void>((resolve) => httpServer.listen(config.httpPort, "127.0.0.1", resolve));
   const info = await run(Effect.flatMap(Provider, (p) => p.info));
   const mode = info.usingMock
     ? "preview renderer (add an OpenAI key in Settings or set OPENAI_API_KEY for GPT Image 2)"

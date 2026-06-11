@@ -90,13 +90,12 @@ function readStore(): StoredSettings {
   }
   return {};
 }
-let store: StoredSettings = readStore();
 
-function persist(): void {
+function persist(store: StoredSettings): void {
   try {
     fs.writeFileSync(SETTINGS_PATH, JSON.stringify(store, null, 2), { mode: 0o600 });
   } catch {
-    /* best effort; in-memory value still applies for this launch */
+    /* best effort; the file is the source of truth for the next read */
   }
 }
 
@@ -104,9 +103,24 @@ function mask(key: string): string | null {
   return key.length > 0 ? `${"•".repeat(8)}${key.slice(-4)}` : null;
 }
 
-function resolved(): ResolvedSettings {
+/** Pick the model, guarding against a stored id that doesn't match the provider
+ *  (e.g. a Claude id left after flipping to OpenAI) — fall back to the provider's
+ *  default rather than sending it to the wrong API. */
+function modelFor(provider: AgentProvider, stored: string | undefined): string {
+  const fallback = provider === "openai" ? config.textModel : config.agentModel;
+  if (!stored) return fallback;
+  if (provider === "openai" && /^claude/i.test(stored)) return fallback;
+  if (provider === "anthropic" && /^(gpt|o\d)/i.test(stored)) return fallback;
+  return stored;
+}
+
+// Resolve fresh from disk on every call so a change made in the app (the HTTP
+// process) is also seen by the separate stdio MCP process — no stale per-process
+// snapshot. The file is tiny, so re-reading per request is negligible.
+function resolved(store: StoredSettings): ResolvedSettings {
   const openaiApiKey = (store.openaiApiKey ?? config.openaiApiKey).trim();
   const anthropicApiKey = (store.anthropicApiKey ?? config.anthropicApiKey).trim();
+  const agentProvider = store.agentProvider ?? config.agentProvider;
   return {
     openaiApiKey,
     anthropicApiKey,
@@ -114,15 +128,16 @@ function resolved(): ResolvedSettings {
     imageModel: config.imageModel,
     textModel: config.textModel,
     titleModel: config.titleModel,
-    agentProvider: store.agentProvider ?? config.agentProvider,
-    agentModel: store.agentModel ?? config.agentModel,
+    agentProvider,
+    agentModel: modelFor(agentProvider, store.agentModel),
   };
 }
 
 const make = Effect.sync<SettingsShape>(() => ({
-  resolve: Effect.sync(resolved),
+  resolve: Effect.sync(() => resolved(readStore())),
   view: Effect.sync(() => {
-    const r = resolved();
+    const store = readStore();
+    const r = resolved(store);
     return {
       hasKey: r.openaiApiKey.length > 0,
       keyMasked: mask(r.openaiApiKey),
@@ -139,7 +154,9 @@ const make = Effect.sync<SettingsShape>(() => ({
   }),
   update: (patch) =>
     Effect.sync(() => {
-      const next: StoredSettings = { ...store };
+      // Merge into the latest on-disk state (not a cached copy) so concurrent
+      // writers don't clobber each other's fields.
+      const next: StoredSettings = { ...readStore() };
       // Keys: empty/null clears the override (revert to env); a value is stored.
       if (patch.openaiApiKey !== undefined) {
         const v = patch.openaiApiKey?.trim() ?? "";
@@ -157,8 +174,7 @@ const make = Effect.sync<SettingsShape>(() => ({
         if (v) next.agentModel = v;
         else delete next.agentModel; // revert to the config default
       }
-      store = next;
-      persist();
+      persist(next);
     }),
 }));
 

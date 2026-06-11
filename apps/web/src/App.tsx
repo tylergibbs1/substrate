@@ -14,6 +14,8 @@ export default function App() {
   const activeDeckId = useEditor((s) => s.activeDeckId);
   const setMcpClients = useEditor((s) => s.setMcpClients);
   const togglePalette = useEditor((s) => s.togglePalette);
+  const notice = useEditor((s) => s.notice);
+  const setNotice = useEditor((s) => s.setNotice);
   useServerEvents(activeDeckId, setMcpClients);
 
   // ⌘K / Ctrl+K opens the command palette anywhere (keyboard-primary input).
@@ -36,6 +38,14 @@ export default function App() {
       {status.isError && (
         <div className="shrink-0 bg-[color-mix(in_oklab,var(--color-danger)_14%,transparent)] text-danger text-xs px-4 py-1.5 border-b border-line">
           Can't reach the Substrate server on :4321. Run <span className="mono">pnpm dev:server</span> in another terminal.
+        </div>
+      )}
+      {notice && (
+        <div className="shrink-0 flex items-center gap-3 bg-[color-mix(in_oklab,var(--color-warn)_12%,transparent)] text-warn text-xs px-4 py-1.5 border-b border-line">
+          <span className="flex-1">{notice}</span>
+          <button type="button" onClick={() => setNotice(null)} className="shrink-0 text-warn/80 hover:text-warn" aria-label="Dismiss">
+            ✕
+          </button>
         </div>
       )}
       {/* No key → a first-run gate replaces the whole editor until one is saved. */}

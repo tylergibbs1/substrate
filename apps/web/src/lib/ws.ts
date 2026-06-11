@@ -16,6 +16,7 @@ import { useEditor } from "../store.js";
 export function useServerEvents(activeDeckId: string | null, onMcpClients: (n: number) => void): void {
   const qc = useQueryClient();
   const setWsConnected = useEditor((s) => s.setWsConnected);
+  const setNotice = useEditor((s) => s.setNotice);
 
   // Keep the live deck id in a ref so the long-lived socket always resyncs the
   // *current* deck on reconnect, without tearing down and re-dialing whenever
@@ -61,6 +62,12 @@ export function useServerEvents(activeDeckId: string | null, onMcpClients: (n: n
           qc.invalidateQueries({ queryKey: ["decks"] });
           qc.invalidateQueries({ queryKey: ["status"] });
           if ("slideId" in event) qc.invalidateQueries({ queryKey: ["history", event.slideId] });
+          break;
+        case "deck-error":
+          // A background agent build failed/stopped short — refetch what landed and
+          // surface the reason so the user isn't staring at a silent empty deck.
+          qc.invalidateQueries({ queryKey: ["deck", event.deckId] });
+          setNotice(event.message);
           break;
       }
     };

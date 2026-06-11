@@ -89,8 +89,9 @@ Start by calling get_deck to read the current slides and their prompts.`;
 
   const cli = `claude mcp add --transport http substrate ${url} \\\n  --header "Authorization: Bearer ${token}"`;
 
-  // Codex is stdio-only for MCP, so bridge the HTTP endpoint with mcp-remote.
-  const codex = `# ~/.codex/config.toml\n[mcp_servers.substrate]\ncommand = "npx"\nargs = ["-y", "mcp-remote", "${url}", "--header", "Authorization: Bearer ${token}"]`;
+  // Codex supports Streamable HTTP MCP servers natively (no mcp-remote bridge) —
+  // a `url` + a static Authorization header via `http_headers`.
+  const codex = `# ~/.codex/config.toml\n[mcp_servers.substrate]\nurl = "${url}"\nhttp_headers = { "Authorization" = "Bearer ${token}" }`;
 
   // Generic HTTP MCP config (Claude Desktop, Cursor, and other MCP clients).
   const mcpJson = `{\n  "mcpServers": {\n    "substrate": {\n      "type": "http",\n      "url": "${url}",\n      "headers": { "Authorization": "Bearer ${token}" }\n    }\n  }\n}`;

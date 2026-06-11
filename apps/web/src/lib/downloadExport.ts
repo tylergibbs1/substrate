@@ -11,7 +11,7 @@ declare global {
 }
 
 /** Thrown when the user dismisses the destination picker — callers ignore it. */
-export class ExportCancelled extends Error {
+class ExportCancelled extends Error {
   constructor() {
     super("export cancelled");
     this.name = "ExportCancelled";

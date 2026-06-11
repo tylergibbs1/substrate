@@ -5,7 +5,7 @@ import { cn } from "../lib/cn.js";
  * any size. An aperture ring split by a compass needle — the negative space
  * reads as an "S". Geometry matches brand/substrate-mark.svg (the source of truth).
  */
-export function Mark({ size = 24, className }: { size?: number; className?: string }) {
+function Mark({ size = 24, className }: { size?: number; className?: string }) {
   return (
     <svg
       viewBox="0 0 256 256"

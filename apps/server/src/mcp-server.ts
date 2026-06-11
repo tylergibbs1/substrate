@@ -129,6 +129,7 @@ export function buildMcpServer(agentName?: string): McpServer {
         deck_id: z.string(),
         design_md: z.string(),
         mode: z.enum(["direct", "propose"]).default("direct"),
+        note: z.string().optional(),
       },
     },
     async (a) =>
@@ -136,7 +137,7 @@ export function buildMcpServer(agentName?: string): McpServer {
         const text = await resolveDesignSource(a.design_md);
         return withDecks((d) =>
           d.compileDesign(text).pipe(
-            Effect.flatMap((designPrompt) => d.setDesignPrompt(a.deck_id, designPrompt, a.mode, author)),
+            Effect.flatMap((designPrompt) => d.setDesignPrompt(a.deck_id, designPrompt, a.mode, author, a.note)),
             Effect.orDie,
           ),
         );

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, ArrowRight, Loader2, Wand2, KeyRound, Sparkles, FileCode2 } from "lucide-react";
+import { Plus, ArrowRight, Loader2, Wand2, KeyRound, Sparkles, FileCode2, Settings, Plug } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useEditor } from "../store.js";
 import { Button, cx } from "../ui.js";
@@ -15,6 +15,7 @@ export function DeckPicker() {
   const qc = useQueryClient();
   const setActiveDeck = useEditor((s) => s.setActiveDeck);
   const setSettingsOpen = useEditor((s) => s.setSettingsOpen);
+  const setConnectOpen = useEditor((s) => s.setConnectOpen);
 
   const presets = useQuery({ queryKey: ["presets"], queryFn: api.presets });
   const decks = useQuery({ queryKey: ["decks"], queryFn: api.decks });
@@ -56,8 +57,8 @@ export function DeckPicker() {
     },
   });
 
-  // Agentic path: an OpenAI agent fills a new deck from the description, and the
-  // editor shows the slides appear/render live (over the same MCP the 3rd-party
+  // Agentic path: the agent (Claude by default) fills a new deck from the
+  // description, and the editor shows slides appear/render live (over the same MCP the 3rd-party
   // agents use). We get the deck id back at once and drop the user straight in.
   const build = useMutation({
     mutationFn: async () => {
@@ -76,7 +77,29 @@ export function DeckPicker() {
   });
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="relative flex-1 overflow-auto">
+      {/* Top-right utilities, reachable before opening a deck. "Use your own agent"
+          surfaces the BYO-agent path (connect a tool you already pay for over MCP),
+          and the gear opens Settings (keys + agent provider/model). Quiet (§7.3). */}
+      <div className="absolute top-3 right-4 z-10 flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setConnectOpen(true)}
+          title="Already have Claude Code, Codex, or another MCP agent you pay for? Connect it to build decks over MCP."
+          className="inline-flex items-center gap-1.5 rounded-lg h-8 px-2.5 text-[12px] text-fg-faint hover:text-fg hover:bg-ink-2 transition-colors"
+        >
+          <Plug size={14} /> Use your own agent
+        </button>
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Settings"
+          title="Settings"
+          className="grid place-items-center w-8 h-8 rounded-lg text-fg-faint hover:text-fg hover:bg-ink-2 transition-colors"
+        >
+          <Settings size={16} />
+        </button>
+      </div>
       <div className="max-w-2xl mx-auto px-6 pt-[10vh] pb-16 grid gap-10">
         {/* Brand mark — quiet, centered above the work surface (§7.3 chrome recedes). */}
         <Wordmark size={30} className="mx-auto" />
@@ -145,12 +168,12 @@ export function DeckPicker() {
               </div>
               <div className="flex items-center gap-2">
                 {/* Opt into the agent: off = a blank deck you build yourself,
-                    on = an OpenAI agent designs and writes every slide. */}
+                    on = the agent designs and writes every slide. */}
                 <button
                   type="button"
                   onClick={() => setUseAgent((v) => !v)}
                   aria-pressed={useAgent}
-                  title="Have an OpenAI agent design and write every slide for you (instead of building it yourself)"
+                  title="Have the agent design and write every slide for you (instead of building it yourself)"
                   className={cx(
                     "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] transition-colors",
                     useAgent
@@ -163,7 +186,7 @@ export function DeckPicker() {
                 <Button
                   variant="primary"
                   onClick={() => (useAgent ? build : create).mutate()}
-                  disabled={create.isPending || build.isPending || (useAgent && !topic.trim())}
+                  disabled={create.isPending || build.isPending || (useAgent && !topic.trim()) || (isDesignMd && !mdSlug)}
                   title={useAgent ? "An agent designs and writes every slide from your description" : "Create a blank deck and build the slides yourself"}
                   className="min-w-[148px] justify-center"
                 >

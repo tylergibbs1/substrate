@@ -14,6 +14,8 @@ interface EditorState {
   paletteOpen: boolean;
   connectOpen: boolean;
   settingsOpen: boolean;
+  /** A transient banner message (e.g. an agent build that failed) — dismissible. */
+  notice: string | null;
 
   setActiveDeck: (id: string | null) => void;
   setActiveSlide: (id: string | null) => void;
@@ -27,6 +29,7 @@ interface EditorState {
   togglePalette: () => void;
   setConnectOpen: (on: boolean) => void;
   setSettingsOpen: (on: boolean) => void;
+  setNotice: (message: string | null) => void;
 }
 
 export const useEditor = create<EditorState>((set) => ({
@@ -40,6 +43,7 @@ export const useEditor = create<EditorState>((set) => ({
   paletteOpen: false,
   connectOpen: false,
   settingsOpen: false,
+  notice: null,
 
   setActiveDeck: (id) => set({ activeDeckId: id, activeSlideId: null }),
   setActiveSlide: (id) => set({ activeSlideId: id, showHistory: false }),
@@ -54,4 +58,5 @@ export const useEditor = create<EditorState>((set) => ({
   togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
   setConnectOpen: (on) => set({ connectOpen: on }),
   setSettingsOpen: (on) => set({ settingsOpen: on }),
+  setNotice: (message) => set({ notice: message }),
 }));

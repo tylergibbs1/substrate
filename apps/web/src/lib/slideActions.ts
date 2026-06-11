@@ -13,7 +13,7 @@ import type { DeckDetail, Slide } from "@substrate/contracts";
  */
 
 /** A slide is busy if a job is queued or running — re-rendering it is a no-op. */
-export function isSlideBusy(slide: Slide | null | undefined): boolean {
+function isSlideBusy(slide: Slide | null | undefined): boolean {
   return (
     slide?.jobStatus === "queued" ||
     slide?.jobStatus === "rendering" ||

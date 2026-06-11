@@ -248,6 +248,9 @@ export const ServerEvent = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("mcp-clients"), count: Schema.Int }),
   Schema.Struct({ type: Schema.Literal("pending-edits-changed"), deckId: NonEmpty }),
+  /** A background agent build failed or stopped short — surfaced so the user isn't
+   *  left staring at a silently empty/partial deck. */
+  Schema.Struct({ type: Schema.Literal("deck-error"), deckId: NonEmpty, message: Schema.String }),
 ]);
 export type ServerEvent = typeof ServerEvent.Type;
 

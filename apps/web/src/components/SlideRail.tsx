@@ -164,14 +164,23 @@ function SlideRow({
     <div
       ref={setNodeRef}
       style={style}
+      role="button"
+      tabIndex={0}
+      aria-pressed={active}
       className={cx(
-        "group relative mx-1.5 my-0.5 rounded-lg border px-2 py-2 cursor-pointer transition-colors",
+        "group relative mx-1.5 my-0.5 rounded-lg border px-2 py-2 cursor-pointer transition-colors outline-none focus-visible:border-accent",
         active
           ? "border-accent bg-[color-mix(in_oklab,var(--color-accent)_9%,transparent)]"
           : "border-transparent hover:border-line hover:bg-ink-2",
         isDragging && "opacity-60",
       )}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
     >
       <button type="button"
         onClick={(e) => {

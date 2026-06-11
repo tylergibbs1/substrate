@@ -12,6 +12,7 @@ import type { DeckDetail } from "@substrate/contracts";
  * the control surface: a composer plus a log of what the agent did.
  */
 interface Run {
+  id: string;
   instruction: string;
   status: "running" | "done" | "error";
   actions: ReadonlyArray<string>;
@@ -27,17 +28,19 @@ export function AssistantPanel({ detail }: { detail: DeckDetail }) {
   const revise = useMutation({
     mutationFn: (instruction: string) => api.reviseDeck(detail.deck.id, instruction),
     onMutate: (instruction) => {
-      setRuns((r) => [...r, { instruction, status: "running", actions: [] }]);
+      const id = crypto.randomUUID();
+      setRuns((r) => [...r, { id, instruction, status: "running", actions: [] }]);
+      return { id };
     },
-    onSuccess: (out) => {
+    onSuccess: (out, _instruction, ctx) => {
       setRuns((r) =>
-        r.map((run, i) => (i === r.length - 1 ? { ...run, status: "done", actions: out.actions, text: out.text } : run)),
+        r.map((run) => (run.id === ctx.id ? { ...run, status: "done", actions: out.actions, text: out.text } : run)),
       );
       qc.invalidateQueries({ queryKey: ["deck", detail.deck.id] });
     },
-    onError: (e) => {
+    onError: (e, _instruction, ctx) => {
       setRuns((r) =>
-        r.map((run, i) => (i === r.length - 1 ? { ...run, status: "error", error: (e as Error).message } : run)),
+        r.map((run) => (run.id === ctx?.id ? { ...run, status: "error", error: (e as Error).message } : run)),
       );
     },
   });
@@ -58,8 +61,8 @@ export function AssistantPanel({ detail }: { detail: DeckDetail }) {
             “tighten every headline to under 6 words”. It edits the slides directly; turn on Review to approve each change.
           </p>
         )}
-        {runs.map((run, i) => (
-          <div key={i} className="space-y-1.5">
+        {runs.map((run) => (
+          <div key={run.id} className="space-y-1.5">
             <div className="text-[12px] text-fg leading-snug">{run.instruction}</div>
             <div className="rounded-lg border border-line bg-ink-2 p-2 text-[11px]">
               {run.status === "running" && (

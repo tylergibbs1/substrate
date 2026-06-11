@@ -533,14 +533,15 @@ const make = Effect.gen(function* () {
           [slideId, deckId, deckId, prompt, newSeed()],
         );
       } else {
-        yield* sql.run("UPDATE slides SET order_index = order_index + 1 WHERE deck_id = ? AND order_index >= ?", [deckId, position]);
-        yield* sql.run("INSERT INTO slides (id, deck_id, order_index, prompt, current_version_id, seed) VALUES (?, ?, ?, ?, NULL, ?)", [
-          slideId,
-          deckId,
-          position,
-          prompt,
-          newSeed(),
-        ]);
+        // Atomic shift+insert in one synchronous block so a positioned insert can't
+        // interleave with a concurrent insert/reorder/delete and collide on order_index.
+        const seed = newSeed();
+        yield* sql.sync((db) => {
+          db.prepare("UPDATE slides SET order_index = order_index + 1 WHERE deck_id = ? AND order_index >= ?").run(deckId, position);
+          db.prepare(
+            "INSERT INTO slides (id, deck_id, order_index, prompt, current_version_id, seed) VALUES (?, ?, ?, ?, NULL, ?)",
+          ).run(slideId, deckId, position, prompt, seed);
+        });
       }
       yield* recordSubstrate(slideId, prompt, author);
       if (render) yield* generation.enqueueRender(slideId, { quality: "instant" });
