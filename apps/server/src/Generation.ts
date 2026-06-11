@@ -231,6 +231,22 @@ const make = Effect.gen(function* () {
     return { rendering: map.get("rendering") ?? 0, thinking: map.get("thinking") ?? 0, queued: map.get("queued") ?? 0 };
   });
 
+  // Resume jobs orphaned by a crash or restart. The render workers are in-memory
+  // detached fibers, so a process exit leaves their jobs unfinished in the DB with
+  // no one to run them — a slide stuck on "rendering"/"queued" forever. On startup,
+  // reset every unfinished job and re-run it under the concurrency cap (reliability:
+  // behavior stays predictable across restarts and partial renders).
+  yield* Effect.gen(function* () {
+    const orphans = yield* sql.all<{ id: string; slide_id: string }>(
+      "SELECT id, slide_id FROM jobs WHERE finished_at IS NULL ORDER BY rowid",
+    );
+    if (orphans.length > 0) yield* Effect.logInfo(`resuming ${orphans.length} render job(s) orphaned by restart`);
+    for (const o of orphans) {
+      yield* sql.run("UPDATE jobs SET status = 'queued', started_at = NULL WHERE id = ?", [o.id]);
+      yield* Effect.forkDetach(Semaphore.withPermits(semaphore, 1, runJob(o.id, o.slide_id, "instant")));
+    }
+  });
+
   return { enqueueRender, generateVariations, jobStats };
 });
 

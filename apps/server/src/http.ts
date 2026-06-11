@@ -22,6 +22,7 @@ import {
   SetApiKeyRequest,
   SetDesignPromptRequest,
   VariationsRequest,
+  type AspectRatio,
   type ExportFormat,
   type ServerEvent,
 } from "@substrate/contracts";
@@ -29,6 +30,7 @@ import { config } from "./Config.ts";
 import { blobExists, blobPath } from "./util.ts";
 import { buildMcpServer } from "./mcp-server.ts";
 import { Decks } from "./Decks.ts";
+import { buildDeckInto } from "./DeckAgent.ts";
 import { Provider } from "./Provider.ts";
 import { Generation } from "./Generation.ts";
 import { Events } from "./Events.ts";
@@ -190,6 +192,25 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     );
     return json(res, 201, result);
   }
+  if (p === "/api/decks/build" && method === "POST") {
+    const body = (await readBody(req)) as { description?: string; aspectRatio?: AspectRatio; designPresetId?: string };
+    const description = (body.description ?? "").trim();
+    if (!description) return json(res, 400, { error: "description required" });
+    const resolved = await run(Effect.flatMap(Settings, (s) => s.resolve));
+    if (resolved.usingMock) return json(res, 400, { error: "Set an OpenAI API key to build with the agent." });
+    // Create the deck now and return its id immediately; the agent fills it with
+    // slides in the background, which the editor shows appearing/rendering live.
+    const title = description.split(/\s+/).slice(0, 6).join(" ").slice(0, 60) || "Untitled deck";
+    const { deckId } = await run(
+      Effect.flatMap(Decks, (d) =>
+        d.createDeck({ title, aspectRatio: body.aspectRatio ?? "16:9", designPresetId: body.designPresetId }),
+      ),
+    );
+    void buildDeckInto({ deckId, description, apiKey: resolved.openaiApiKey }).catch((e) =>
+      runtime.runFork(Effect.logError(`deck-builder agent failed for ${deckId}`, e)),
+    );
+    return json(res, 201, { deckId });
+  }
 
   if (seg[0] === "api" && seg[1] === "decks" && seg[2]) {
     const deckId = seg[2];
@@ -213,7 +234,9 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       return json(
         res,
         201,
-        await decodeAnd(AddSlideRequest, body, (b) => Effect.flatMap(Decks, (d) => d.addSlide(deckId, b.prompt, b.position, b.author))),
+        // render: false — a new slide from the editor is a blank canvas; the user
+        // writes its prompt and renders explicitly (no auto-generate on add).
+        await decodeAnd(AddSlideRequest, body, (b) => Effect.flatMap(Decks, (d) => d.addSlide(deckId, b.prompt, b.position, b.author, false))),
       );
     }
     if (sub === "reorder" && method === "POST") {
@@ -249,6 +272,9 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
   if (seg[0] === "api" && seg[1] === "slides" && seg[2]) {
     const slideId = seg[2];
     const sub = seg[3];
+    if (!sub && method === "DELETE") {
+      return json(res, 200, await run(Effect.flatMap(Decks, (d) => d.deleteSlide(slideId))));
+    }
     if (sub === "prompt" && method === "POST") {
       const body = await readBody(req);
       return json(
@@ -345,11 +371,14 @@ async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse): P
       },
     } as never);
     transport.onclose = () => {
-      if (transport.sessionId !== undefined) {
-        mcpSessions.delete(transport.sessionId);
-        void server.close();
-        void publishMcpCount();
-      }
+      const sid = transport.sessionId;
+      // server.close() closes the transport, which re-fires onclose — delete the
+      // session FIRST so the re-entrant call short-circuits here instead of
+      // recursing into server.close() forever (stack overflow / process crash).
+      if (sid === undefined || !mcpSessions.has(sid)) return;
+      mcpSessions.delete(sid);
+      void server.close();
+      void publishMcpCount();
     };
     await server.connect(transport as never);
     await transport.handleRequest(req, res, body);

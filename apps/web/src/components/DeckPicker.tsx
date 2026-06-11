@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, ArrowRight, Loader2, Wand2, KeyRound } from "lucide-react";
+import { Plus, ArrowRight, Loader2, Wand2, KeyRound, Sparkles } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useEditor } from "../store.js";
 import { Button, cx } from "../ui.js";
@@ -47,6 +47,22 @@ export function DeckPicker() {
         );
         return;
       }
+      setActiveDeck(deckId);
+    },
+  });
+
+  // Agentic path: an OpenAI agent fills a new deck from the description, and the
+  // editor shows the slides appear/render live (over the same MCP the 3rd-party
+  // agents use). We get the deck id back at once and drop the user straight in.
+  const build = useMutation({
+    mutationFn: () =>
+      api.buildDeck({
+        description: topic.trim() + (isCustom && customStyle.trim() ? `\n\nVisual style: ${customStyle.trim()}` : ""),
+        aspectRatio: aspect,
+        ...(isCustom ? {} : { designPresetId: presetId }),
+      }),
+    onSuccess: ({ deckId }) => {
+      qc.invalidateQueries({ queryKey: ["decks"] });
       setActiveDeck(deckId);
     },
   });
@@ -109,10 +125,20 @@ export function DeckPicker() {
                   </button>
                 ))}
               </div>
-              <Button variant="primary" onClick={() => create.mutate()} disabled={create.isPending}>
-                {create.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                {create.isPending ? "Generating…" : "Generate"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => build.mutate()}
+                  disabled={!topic.trim() || build.isPending || create.isPending}
+                  title="Let an OpenAI agent design and write every slide from your description"
+                >
+                  {build.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  {build.isPending ? "Building…" : "Build with agent"}
+                </Button>
+                <Button variant="primary" onClick={() => create.mutate()} disabled={create.isPending || build.isPending}>
+                  {create.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  {create.isPending ? "Generating…" : "Generate"}
+                </Button>
+              </div>
             </div>
           </div>
 

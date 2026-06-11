@@ -143,7 +143,12 @@ export interface DecksShape {
     prompt: string,
     position: number | undefined,
     author?: Author,
+    /** Kick off a render immediately. The UI passes false so a new slide is a
+     *  blank canvas the user writes a prompt into, then renders explicitly. */
+    render?: boolean,
   ) => Effect.Effect<{ slideId: string }>;
+  readonly getSlide: (slideId: string) => Effect.Effect<Slide | null>;
+  readonly deleteSlide: (slideId: string) => Effect.Effect<{ deckId: string }>;
   readonly editSlidePrompt: (
     slideId: string,
     newPrompt: string,
@@ -173,6 +178,7 @@ export interface DecksShape {
   readonly pickVersion: (slideId: string, versionId: string) => Effect.Effect<void>;
   readonly reorder: (deckId: string, orderedSlideIds: ReadonlyArray<string>) => Effect.Effect<void>;
   readonly setReviewMode: (deckId: string, on: boolean) => Effect.Effect<void>;
+  readonly setDeckTitle: (deckId: string, title: string) => Effect.Effect<void>;
   readonly exportDeck: (deckId: string, format: ExportFormat) => Effect.Effect<{ path: string; note?: string }>;
   readonly exportManifest: (deckId: string, format: ExportFormat) => Effect.Effect<ExportBundle>;
   /** Generate + persist display titles for any slides that lack one (batched into
@@ -299,6 +305,40 @@ const make = Effect.gen(function* () {
 
   const getDeck: DecksShape["getDeck"] = (deckId) =>
     sql.get<DeckR>("SELECT * FROM decks WHERE id = ?", [deckId]).pipe(Effect.map((r) => (r ? mapDeck(r) : null)));
+
+  const getSlide: DecksShape["getSlide"] = (slideId) =>
+    sql
+      .get<SlideR>(
+        `SELECT s.*, v.image_blob_ref AS image_blob_ref,
+          (SELECT status FROM jobs j WHERE j.slide_id = s.id ORDER BY COALESCE(j.finished_at, j.started_at, 0) DESC, rowid DESC LIMIT 1) AS job_status
+        FROM slides s LEFT JOIN versions v ON v.id = s.current_version_id WHERE s.id = ?`,
+        [slideId],
+      )
+      .pipe(Effect.map((r) => (r ? mapSlide(r) : null)));
+
+  const setDeckTitle: DecksShape["setDeckTitle"] = (deckId, title) =>
+    Effect.gen(function* () {
+      const t = title.trim().slice(0, 120) || "Untitled deck";
+      yield* sql.run("UPDATE decks SET title = ? WHERE id = ?", [t, deckId]);
+      yield* events.publish({ type: "deck-changed", deckId });
+    });
+
+  const deleteSlide: DecksShape["deleteSlide"] = (slideId) =>
+    Effect.gen(function* () {
+      const row = yield* sql.get<{ deck_id: string; order_index: number }>(
+        "SELECT deck_id, order_index FROM slides WHERE id = ?",
+        [slideId],
+      );
+      if (!row) return yield* die(`slide not found: ${slideId}`);
+      // FK ON DELETE CASCADE drops the slide's versions/substrates/jobs.
+      yield* sql.run("DELETE FROM slides WHERE id = ?", [slideId]);
+      yield* sql.run("UPDATE slides SET order_index = order_index - 1 WHERE deck_id = ? AND order_index > ?", [
+        row.deck_id,
+        row.order_index,
+      ]);
+      yield* events.publish({ type: "deck-changed", deckId: row.deck_id });
+      return { deckId: row.deck_id };
+    });
 
   const slidesFor = (deckId: string) =>
     sql
@@ -477,7 +517,7 @@ const make = Effect.gen(function* () {
       return { deckId, outlineFailed };
     });
 
-  const addSlide: DecksShape["addSlide"] = (deckId, prompt, position, author = HUMAN) =>
+  const addSlide: DecksShape["addSlide"] = (deckId, prompt, position, author = HUMAN, render = true) =>
     Effect.gen(function* () {
       const countRow = yield* sql.get<{ c: number }>("SELECT COUNT(*) c FROM slides WHERE deck_id = ?", [deckId]);
       const at = position ?? countRow?.c ?? 0;
@@ -491,7 +531,7 @@ const make = Effect.gen(function* () {
         newSeed(),
       ]);
       yield* recordSubstrate(slideId, prompt, author);
-      yield* generation.enqueueRender(slideId, { quality: "instant" });
+      if (render) yield* generation.enqueueRender(slideId, { quality: "instant" });
       yield* events.publish({ type: "deck-changed", deckId });
       return { slideId };
     });
@@ -689,6 +729,9 @@ const make = Effect.gen(function* () {
     exportDeck,
     exportManifest,
     ensureTitles,
+    getSlide,
+    deleteSlide,
+    setDeckTitle,
   };
 });
 

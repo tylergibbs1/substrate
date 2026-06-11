@@ -1,8 +1,11 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import fs from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import * as Effect from "effect/Effect";
 import type { Author } from "@substrate/contracts";
 import { Decks, type DecksShape } from "./Decks.ts";
+import { blobExists, blobPath } from "./util.ts";
 import { runtime } from "./runtime.ts";
 
 /**
@@ -103,10 +106,58 @@ export function buildMcpServer(agentName?: string): McpServer {
     "add_slide",
     {
       title: "Add slide",
-      description: "Create a slide from a prompt and queue its render.",
-      inputSchema: { deck_id: z.string(), prompt: z.string(), position: z.number().int().optional() },
+      description:
+        "Create a slide from a prompt. By default its render is queued immediately; pass render=false to add a blank slide and render later with regenerate_slide.",
+      inputSchema: {
+        deck_id: z.string(),
+        prompt: z.string(),
+        position: z.number().int().optional(),
+        render: z.boolean().default(true),
+      },
     },
-    async (a) => guard(() => withDecks((d) => d.addSlide(a.deck_id, a.prompt, a.position, author))),
+    async (a) => guard(() => withDecks((d) => d.addSlide(a.deck_id, a.prompt, a.position, author, a.render))),
+  );
+
+  server.registerTool(
+    "set_deck_title",
+    {
+      title: "Set deck title",
+      description: "Rename the deck to a concise, specific title.",
+      inputSchema: { deck_id: z.string(), title: z.string() },
+    },
+    async (a) => guard(() => withDecks((d) => d.setDeckTitle(a.deck_id, a.title).pipe(Effect.as({ ok: true })))),
+  );
+
+  server.registerTool(
+    "delete_slide",
+    {
+      title: "Delete slide",
+      description: "Delete a slide (and its render history) from its deck. Remaining slides are reindexed.",
+      inputSchema: { slide_id: z.string() },
+    },
+    async (a) => guard(() => withDecks((d) => d.deleteSlide(a.slide_id))),
+  );
+
+  server.registerTool(
+    "get_slide_render",
+    {
+      title: "Get slide render",
+      description:
+        "Fetch a slide's current rendered image so you can SEE it and critique it before editing the prompt. Returns the image inline, or a note if the slide hasn't been rendered yet.",
+      inputSchema: { slide_id: z.string() },
+    },
+    async (a) => {
+      const slide = await withDecks((d) => d.getSlide(a.slide_id));
+      if (!slide) return fail(`slide not found: ${a.slide_id}`);
+      if (!slide.imageBlobRef || !blobExists(slide.imageBlobRef)) {
+        return ok({ slideId: a.slide_id, rendered: false, note: "not rendered yet — call regenerate_slide first" });
+      }
+      const ext = slide.imageBlobRef.split(".").pop() ?? "png";
+      const mimeType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : "image/png";
+      return {
+        content: [{ type: "image" as const, data: fs.readFileSync(blobPath(slide.imageBlobRef)).toString("base64"), mimeType }],
+      };
+    },
   );
 
   server.registerTool(

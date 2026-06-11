@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, GripVertical, Loader2, AlertCircle } from "lucide-react";
+import { Plus, GripVertical, Loader2, AlertCircle, Trash2 } from "lucide-react";
 import { api } from "../lib/api.js";
 import { deriveSlideTitle } from "@substrate/shared/SlideTitle";
 import { useEditor } from "../store.js";
@@ -65,6 +65,15 @@ export function SlideRail({ detail }: { detail: DeckDetail }) {
     },
   });
 
+  const removeSlide = useMutation({
+    mutationFn: (slideId: string) => api.deleteSlide(slideId),
+    onSuccess: (_r, slideId) => {
+      // Drop selection if the active slide went away (Editor re-selects the first).
+      if (activeSlideId === slideId) setActiveSlide(null);
+      qc.invalidateQueries({ queryKey: ["deck", detail.deck.id] });
+    },
+  });
+
   const slides = detail.slides;
   const ids = order ?? slides.map((s) => s.id);
   const pendingBySlide = new Set(
@@ -105,6 +114,7 @@ export function SlideRail({ detail }: { detail: DeckDetail }) {
                   active={sid === activeSlideId}
                   hasPending={pendingBySlide.has(sid)}
                   onSelect={() => setActiveSlide(sid)}
+                  onDelete={() => removeSlide.mutate(sid)}
                 />
               );
             })}
@@ -132,12 +142,14 @@ function SlideRow({
   active,
   hasPending,
   onSelect,
+  onDelete,
 }: {
   slide: Slide;
   index: number;
   active: boolean;
   hasPending: boolean;
   onSelect: () => void;
+  onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: slide.id,
@@ -161,6 +173,17 @@ function SlideRow({
       )}
       onClick={onSelect}
     >
+      <button type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        aria-label="Delete slide"
+        title="Delete slide"
+        className="absolute top-1.5 right-1.5 grid place-items-center w-6 h-6 rounded-md text-fg-faint opacity-0 group-hover:opacity-100 hover:text-danger hover:bg-ink-3 transition-colors"
+      >
+        <Trash2 size={13} />
+      </button>
       <div className="flex items-start gap-1.5">
         <button type="button"
           {...attributes}

@@ -138,6 +138,13 @@ function SlideCanvas({ detail, slide }: { detail: DeckDetail; slide: Slide }) {
               ) : (
                 <span className="flex flex-col items-center gap-2 text-xs">
                   <ImageOff size={22} /> not rendered yet
+                  <button type="button"
+                    onClick={() => actions.regenerateIfIdle(slide)}
+                    disabled={actions.regenerate.isPending}
+                    className="rounded-full border border-line-2 px-3 py-1 text-fg hover:bg-ink-2 hover:border-fg-faint transition-colors disabled:opacity-40"
+                  >
+                    Generate
+                  </button>
                 </span>
               )}
             </div>

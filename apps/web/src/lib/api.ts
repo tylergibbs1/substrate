@@ -1,5 +1,6 @@
 import type {
   AddSlideRequest,
+  AspectRatio,
   CreateDeckRequest,
   DeckDetail,
   DeckSummary,
@@ -74,6 +75,11 @@ export const api = {
   createDeck: (body: CreateDeckRequest) =>
     req<{ deckId: string; outlineFailed: boolean }>("/api/decks", { method: "POST", body: JSON.stringify(body) }),
 
+  // Create an empty deck and let an OpenAI agent fill it from a description; the
+  // editor shows slides appear and render live. Returns the new deck id at once.
+  buildDeck: (body: { description: string; aspectRatio?: AspectRatio; designPresetId?: string }) =>
+    req<{ deckId: string }>("/api/decks/build", { method: "POST", body: JSON.stringify(body) }),
+
   setDesignPrompt: (deckId: string, designPrompt: string, mode: EditMode) =>
     req<{ applied: boolean; editId: string; affectedSlides: number }>(`/api/decks/${deckId}/design`, {
       method: "POST",
@@ -91,6 +97,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ orderedSlideIds }),
     }),
+
+  deleteSlide: (slideId: string) => req<{ deckId: string }>(`/api/slides/${slideId}`, { method: "DELETE" }),
 
   setReviewMode: (deckId: string, on: boolean) =>
     req<{ ok: true }>(`/api/decks/${deckId}/review`, { method: "POST", body: JSON.stringify({ on }) }),

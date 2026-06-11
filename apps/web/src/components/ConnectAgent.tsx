@@ -83,11 +83,17 @@ export function ConnectAgent() {
 
 Substrate is a deck of AI-generated slides where the ONLY editable things are prompts — never pixels. Each slide has a prompt (its "substrate"); the deck has one main design prompt injected ahead of every slide.
 
-Tools available: list_decks, list_design_presets, create_deck, get_deck, set_design_prompt, add_slide, edit_slide_prompt, list_pending_edits, regenerate_slide, get_history, reorder_slides, export_deck. Use mode "propose" to suggest edits for human approval, or "direct" to apply and re-render.${deckLine}
+Tools available: list_decks, list_design_presets, create_deck, get_deck, set_deck_title, set_design_prompt, add_slide, edit_slide_prompt, delete_slide, list_pending_edits, regenerate_slide, get_slide_render, get_history, reorder_slides, export_deck. Use mode "propose" to suggest edits for human approval, or "direct" to apply and re-render. Call get_slide_render to SEE a slide's rendered image and critique it before editing its prompt.${deckLine}
 
 Start by calling get_deck to read the current slides and their prompts.`;
 
   const cli = `claude mcp add --transport http substrate ${url} \\\n  --header "Authorization: Bearer ${token}"`;
+
+  // Codex is stdio-only for MCP, so bridge the HTTP endpoint with mcp-remote.
+  const codex = `# ~/.codex/config.toml\n[mcp_servers.substrate]\ncommand = "npx"\nargs = ["-y", "mcp-remote", "${url}", "--header", "Authorization: Bearer ${token}"]`;
+
+  // Generic HTTP MCP config (Claude Desktop, Cursor, and other MCP clients).
+  const mcpJson = `{\n  "mcpServers": {\n    "substrate": {\n      "type": "http",\n      "url": "${url}",\n      "headers": { "Authorization": "Bearer ${token}" }\n    }\n  }\n}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] bg-ink-0/60" onClick={() => setOpen(false)}>
@@ -110,7 +116,9 @@ Start by calling get_deck to read the current slides and their prompts.`;
             agent and let it co-edit this deck over MCP.
           </p>
           <CopyBox label="Prompt — paste into your agent" value={prompt} multiline />
-          <CopyBox label="Or register the server directly (Claude Code)" value={cli} />
+          <CopyBox label="Register the server — Claude Code" value={cli} />
+          <CopyBox label="Codex — ~/.codex/config.toml" value={codex} multiline />
+          <CopyBox label="Other MCP clients (Claude Desktop, Cursor…)" value={mcpJson} multiline />
           <p className="text-[10px] text-fg-faint">
             Loopback only · the token persists across restarts · set <span className="mono">SUBSTRATE_MCP_TOKEN</span> to
             pin your own. Agents edit prompts only — there are no editable pixels.
