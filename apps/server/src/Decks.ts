@@ -715,9 +715,28 @@ const make = Effect.gen(function* () {
 
   const reorder: DecksShape["reorder"] = (deckId, orderedSlideIds) =>
     Effect.gen(function* () {
-      yield* Effect.forEach(orderedSlideIds, (sid, i) =>
-        sql.run("UPDATE slides SET order_index = ? WHERE id = ? AND deck_id = ?", [i, sid, deckId]),
-      );
+      // Validate the request is a true permutation of this deck's slides before
+      // touching a row. A stale client or a buggy agent could send a list that
+      // drops, duplicates, or invents IDs — applied blindly that silently corrupts
+      // order_index (gaps, collisions, or slides stranded at their old position).
+      const rows = yield* sql.all<{ id: string }>("SELECT id FROM slides WHERE deck_id = ?", [deckId]);
+      const actual = new Set(rows.map((r) => r.id));
+      const unique = new Set(orderedSlideIds);
+      const isPermutation =
+        orderedSlideIds.length === rows.length &&
+        unique.size === orderedSlideIds.length && // no duplicates
+        orderedSlideIds.every((sid) => actual.has(sid));
+      if (!isPermutation) {
+        return yield* die(
+          `reorder must be a permutation of the deck's slides (got ${orderedSlideIds.length}, deck has ${rows.length})`,
+        );
+      }
+      // Apply every order_index in one synchronous block so the reorder can't
+      // interleave with a concurrent insert/delete and leave indices half-updated.
+      yield* sql.sync((db) => {
+        const stmt = db.prepare("UPDATE slides SET order_index = ? WHERE id = ? AND deck_id = ?");
+        orderedSlideIds.forEach((sid, i) => stmt.run(i, sid, deckId));
+      });
       yield* events.publish({ type: "deck-changed", deckId });
     });
 

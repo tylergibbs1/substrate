@@ -112,6 +112,13 @@ export function useServerEvents(activeDeckId: string | null, onMcpClients: (n: n
       ws.onopen = () => {
         attempt = 0;
         setWsConnected(true);
+        // A run can begin and end entirely while the socket is down — we'd miss
+        // the closing agent-run / agent-activity edges and be stuck rendering
+        // "working" forever. Clear the transient presence on every (re)connect;
+        // an agent that's genuinely still active re-establishes it on its next
+        // edit or step. (On the first connect this is a harmless no-op.)
+        setAgentActivity(null);
+        setAgentRun(null);
         // We may have missed events while the socket was down — resync the
         // visible deck and the global lists so nothing is silently stale.
         const deckId = deckRef.current;
