@@ -5,21 +5,11 @@ import { api } from "../lib/api.js";
 import { useEditor } from "../store.js";
 import { Button, cx, Eyebrow } from "../ui.js";
 import { Wordmark } from "./Mark.js";
+import { UpdatePill } from "./UpdatePill.js";
 import type { AspectRatio } from "@substrate/contracts";
 
-// In the desktop shell, the preload bridge exposes a native folder/file picker.
-// In the dev browser it's absent, and we fall back to a typed path.
-declare global {
-  interface Window {
-    substrate?: {
-      pickPath?: (opts?: { directory?: boolean }) => Promise<string[] | string | null>;
-      saveExport?: (payload: {
-        suggestedName: string;
-        files: Array<{ name: string; data: Uint8Array }>;
-      }) => Promise<string | null>;
-    };
-  }
-}
+// The desktop preload bridge (window.substrate) is typed centrally in lib/desktop;
+// in the dev browser it's absent and we fall back to a typed path.
 
 /**
  * Home / first run. A new deck starts by selecting a design (PRD §6.1), with
@@ -117,6 +107,7 @@ export function DeckPicker() {
           surfaces the BYO-agent path (connect a tool you already pay for over MCP),
           and the gear opens Settings (keys + agent provider/model). Quiet (§7.3). */}
       <div className="absolute top-3 right-4 z-10 flex items-center gap-1">
+        <UpdatePill />
         <button
           type="button"
           onClick={() => setConnectOpen(true)}
