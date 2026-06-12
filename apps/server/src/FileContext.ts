@@ -412,13 +412,13 @@ export function openFileContext(inputs: string[]): FileContext {
     return new Promise((resolve) => {
       let child: ReturnType<typeof spawn>;
       try {
-        // POSIX: `detached` makes the shell a process-group leader so the timeout
-        // can group-kill it AND all its children (pipelines, python3, &-jobs).
-        // Windows has no /bin/sh and no POSIX process groups — run via cmd.exe and
-        // rely on taskkill /T in kill() to take down the whole tree.
-        child = isWindows
-          ? spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", command], { cwd: runCwd, env })
-          : spawn("/bin/sh", ["-c", command], { cwd: runCwd, env, detached: true });
+        // `shell: true` runs the command through the host shell (cmd.exe on
+        // Windows, /bin/sh on POSIX) and lets Node handle the invocation +
+        // per-platform quote escaping — far more robust than hand-building cmd.exe
+        // args. POSIX: `detached` makes the shell a process-group leader so the
+        // timeout can group-kill it AND its children (pipelines, python3, &-jobs);
+        // Windows uses taskkill /T in kill() to take down the whole tree instead.
+        child = spawn(command, { cwd: runCwd, env, shell: true, detached: !isWindows });
       } catch (e) {
         resolve(`Failed to start the command: ${e instanceof Error ? e.message : String(e)}`);
         return;

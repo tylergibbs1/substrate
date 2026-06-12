@@ -6,8 +6,8 @@
 //
 //   node apps/server/test/filecontext.smoke.mjs
 //
-// All `run` commands use `node -e` so the test itself is OS-agnostic (awk/sleep
-// don't exist on Windows). Exits non-zero on the first failed assertion.
+// `run` commands invoke checked-in script files (no inline quotes) so the test
+// itself survives cmd.exe quoting. Exits non-zero on the first failed assertion.
 import { openFileContext } from "../src/FileContext.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -25,12 +25,26 @@ fs.writeFileSync(path.join(a, "data.csv"), "name,n\nx,3\ny,7\n");
 fs.mkdirSync(path.join(a, "sub"));
 fs.writeFileSync(path.join(a, "sub", "note.txt"), "hello world\nalpha beta\n");
 fs.writeFileSync(path.join(b, "readme.md"), "# B\ngamma delta\n");
+// Quote-free run targets (no inline `node -e`, which is a cmd.exe quoting minefield).
+fs.writeFileSync(path.join(a, "compute.js"), "console.log('sum=' + (3 + 7));\n");
+fs.writeFileSync(path.join(a, "sleeper.js"), "setTimeout(() => {}, 10000);\n");
 
 // --- multi-root workspace (junction on Windows, symlink on POSIX) ---
 const ctx = openFileContext([a, b]);
 ok(/2 attached folders/.test(ctx.label), `multi-root label: ${ctx.label}`);
 const entries = fs.readdirSync(ctx.root);
 ok(entries.length === 2, `workspace exposes both roots (${entries.join(", ")})`);
+const aName = entries.find((n) => fs.existsSync(path.join(ctx.root, n, "data.csv"))) ?? entries[0];
+
+// Diagnostics: how each workspace link presents + whether its realpath matches the
+// source root (the containment check compares these — a mismatch silently drops it).
+console.log(`[diag] platform=${process.platform} root=${ctx.root}`);
+for (const e of fs.readdirSync(ctx.root, { withFileTypes: true })) {
+  let rp = "?";
+  try { rp = fs.realpathSync(path.join(ctx.root, e.name)); } catch (err) { rp = "ERR:" + err.code; }
+  console.log(`[diag]   ${e.name}: symlink=${e.isSymbolicLink()} dir=${e.isDirectory()} realpath=${rp}`);
+}
+console.log(`[diag] source realpaths a=${fs.realpathSync(a)} b=${fs.realpathSync(b)}`);
 
 const globOut = await ctx.glob("**/*.csv");
 ok(/data\.csv/.test(globOut), `glob **/*.csv finds data.csv (forward-slash match)`);
@@ -42,12 +56,12 @@ const grepOut = await ctx.grep("gamma");
 ok(/readme\.md/.test(grepOut), `grep finds a match in the second root`);
 
 // --- run: the shell actually executes (cmd.exe on Windows, /bin/sh on POSIX) ---
-const runOut = await ctx.run(`node -e "console.log('sum=' + (3+7))"`);
+const runOut = await ctx.run(`node ${aName}/compute.js`);
 ok(/sum=10/.test(runOut), `run executes a command and captures stdout`);
 
 // --- run timeout: the process tree is actually killed (taskkill / group-kill) ---
 const t0 = Date.now();
-const killOut = await ctx.run(`node -e "setTimeout(()=>{}, 10000)"`, 1500);
+const killOut = await ctx.run(`node ${aName}/sleeper.js`, 1500);
 const elapsed = Date.now() - t0;
 ok(/timed out/.test(killOut) && elapsed < 6000, `run timeout kills the process (${Math.round(elapsed)}ms)`);
 
@@ -59,8 +73,8 @@ const ctx2 = openFileContext([path.join(a, "data.csv")]);
 ok(/the file data\.csv/.test(ctx2.label), `single-file label: ${ctx2.label}`);
 const readOut = await ctx2.readFile("data.csv");
 ok(/name,n/.test(readOut), `single-file readFile returns the attached file`);
-const runOut2 = await ctx2.run(`node -e "console.log('ran in single-file cwd')"`);
-ok(/ran in single-file cwd/.test(runOut2), `run works in single-file scratch cwd`);
+const runOut2 = await ctx2.run(`node --version`);
+ok(/^v?\d+\./m.test(runOut2), `run works in single-file scratch cwd`);
 ctx2.dispose();
 
 // cleanup the source fixtures
