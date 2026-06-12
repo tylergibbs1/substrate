@@ -7,4 +7,15 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("substrate", {
   pickPath: (opts) => ipcRenderer.invoke("substrate:pickPath", opts),
   saveExport: (payload) => ipcRenderer.invoke("substrate:saveExport", payload),
+  // Auto-update surface. The main process drives electron-updater and pushes
+  // state changes over the "substrate:update" channel; the renderer can pull a
+  // check or trigger the install-and-restart.
+  getVersion: () => ipcRenderer.invoke("substrate:version"),
+  checkForUpdates: () => ipcRenderer.invoke("substrate:checkForUpdates"),
+  restartToUpdate: () => ipcRenderer.invoke("substrate:restartToUpdate"),
+  onUpdate: (cb) => {
+    const listener = (_e, state) => cb(state);
+    ipcRenderer.on("substrate:update", listener);
+    return () => ipcRenderer.removeListener("substrate:update", listener);
+  },
 });
