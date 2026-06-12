@@ -32,12 +32,6 @@ UI, an Effect server with `node:sqlite` persistence + a GPT Image 2 provider
 adapter + a live MCP server, and an Electron shell. It runs **with no API key**
 via a deterministic mock renderer, so you can see the whole flow offline.
 
-The stack and conventions are modeled on
-[pingdotgg/t3code](https://github.com/pingdotgg/t3code): an Effect 4 backend
-(`Context.Service` + `Layer`, `node:sqlite`, namespace imports), `effect/Schema`
-contracts, `tsgo` typechecking via a pnpm `catalog:`, and a React 19 + Vite +
-Tailwind v4 + Base UI web app. See `AGENTS.md` and `docs/ARCHITECTURE.md`.
-
 ## Download
 
 Grab the latest desktop build from
