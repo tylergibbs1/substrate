@@ -178,14 +178,35 @@ export function openFileContext(inputs: string[]): FileContext {
     tempDirs.length = 0;
   };
 
+  // Canonicalize to ONE form before comparing. Windows realpath is inconsistent
+  // between calls — fs.realpathSync may keep an 8.3 short name (RUNNER~1) while the
+  // async/native form expands it (runneradmin), and \\?\ prefixes come and go — so
+  // a junction target and its source root can be the same dir yet compare unequal.
+  // realpathSync.native gives the OS-canonical long form; lower-case for the
+  // case-insensitive NTFS compare. No-op canonicalization difference on POSIX.
+  const canonical = (p: string): string => {
+    let c = p;
+    try {
+      c = fs.realpathSync.native(p);
+    } catch {
+      /* unresolvable (e.g. ENOENT) — fall back to the lexical path */
+    }
+    return isWindows ? c.replace(/^\\\\\?\\/, "").toLowerCase() : c;
+  };
+  const canonRoot = canonical(root);
+  const canonRoots = roots.map(canonical);
+
   const isUnderOrEq = (base: string, p: string): boolean => {
     const r = path.relative(base, p);
     return r === "" || (r !== ".." && !r.startsWith(".." + path.sep) && !path.isAbsolute(r));
   };
   // In-bounds iff the REAL path is the/under the root (workspace-local) or under
-  // any attached input (the symlink targets / each chosen folder).
-  const insideRoots = (real: string): boolean =>
-    isUnderOrEq(root, real) || roots.some((r) => isUnderOrEq(r, real));
+  // any attached input (the symlink targets / each chosen folder). Compare in the
+  // canonical form so Windows short/long/prefix realpath variants still match.
+  const insideRoots = (real: string): boolean => {
+    const c = canonical(real);
+    return isUnderOrEq(canonRoot, c) || canonRoots.some((r) => isUnderOrEq(r, c));
+  };
 
   // Resolve a (possibly relative, possibly "<name>/...") path. Realpath ONLY for
   // the containment check (catches `..` and symlinks pointing out); return the
