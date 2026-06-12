@@ -21,7 +21,7 @@ Nothing is composited on top — no text layer, no shapes, no vector overlay.
 
 <p align="center">
   <a href="https://youtu.be/DVRfEnbQqJ8">
-    <img src="https://i.ytimg.com/vi/DVRfEnbQqJ8/hqdefault.jpg" alt="Substrate demo — watch on YouTube" width="480" />
+    <img src="https://i.ytimg.com/vi/DVRfEnbQqJ8/maxresdefault.jpg" alt="Substrate demo — watch on YouTube" width="640" />
   </a>
 </p>
 
