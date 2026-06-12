@@ -154,7 +154,7 @@ export function DeckPicker() {
               className="mx-auto flex items-center gap-2 rounded-full border border-[color-mix(in_oklab,var(--color-warn)_40%,transparent)] bg-[color-mix(in_oklab,var(--color-warn)_8%,transparent)] px-3 py-1.5 text-[11px] text-warn hover:brightness-110 transition-[filter]"
             >
               <KeyRound size={12} />
-              Using the offline preview renderer — add your OpenAI API key to render with GPT Image 2
+              Using the offline preview renderer. Add your OpenAI API key to render with GPT Image 2
             </button>
           )}
 
@@ -236,14 +236,14 @@ export function DeckPicker() {
                     ) : (
                       <button type="button" onClick={pickContext} className="inline-flex items-center gap-1.5 text-[11px] text-fg-faint hover:text-fg transition-colors">
                         <FolderOpen size={12} />{" "}
-                        {contextPaths.length ? "Add another folder or file" : "Add context — point the agent at folders or files"}
+                        {contextPaths.length ? "Add another folder or file" : "Add context: point the agent at folders or files"}
                       </button>
                     )}
                   </div>
                 </>
               ) : (
                 <p className="px-4 pt-1.5 pb-3 text-[12.5px] leading-relaxed text-fg-faint">
-                  You'll start with a blank deck — add and write each slide yourself. Turn on the agent to have one built for you.
+                  You'll start with a blank deck. Add and write each slide yourself, or turn on the agent to have one built for you.
                 </p>
               )}
             </div>
@@ -421,7 +421,7 @@ export function DeckPicker() {
                   ))}
                 </select>
                 <span className="text-[10px] text-fg-faint">
-                  Compiled into this deck's design — the image model approximates the look (palette, type, mood), not exact tokens.
+                  Compiled into this deck's design: the image model approximates the look (palette, type, mood), not exact tokens.
                 </span>
               </div>
             </div>
