@@ -30,9 +30,7 @@
       "icon": "build/icon.png",
       "category": "public.app-category.productivity",
       "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "gatekeeperAssess": false
     },
     "linux": { "target": "AppImage", "icon": "build/icon.png", "category": "Graphics" },
     "win": { "target": "nsis", "icon": "build/icon.png" }
