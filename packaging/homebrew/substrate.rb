@@ -5,8 +5,8 @@
 #
 # Bump `version` + `sha256` on each release (sha256 of the arm64 .dmg).
 cask "substrate" do
-  version "0.3.0"
-  sha256 "18009fcaa2fcb19b60354bf61cc7d345758af670f673fa65833dbc5cb0e0d5f8"
+  version "0.3.4"
+  sha256 "ad72e62e383c51795f04d799b76921ad8bbf3244ed1b2237916d11a680fc4297"
 
   url "https://github.com/tylergibbs1/substrate/releases/download/v#{version}/Substrate-#{version}-arm64.dmg",
       verified: "github.com/tylergibbs1/substrate/"
@@ -22,13 +22,4 @@ cask "substrate" do
   zap trash: [
     "~/Library/Application Support/substrate",
   ]
-
-  caveats <<~EOS
-    Substrate is not yet code-signed or notarized, so macOS Gatekeeper will block
-    the first launch. Either right-click the app and choose Open, or run:
-
-      xattr -dr com.apple.quarantine "/Applications/Substrate.app"
-
-    Once the app is signed + notarized this caveat (and the manual step) go away.
-  EOS
 end

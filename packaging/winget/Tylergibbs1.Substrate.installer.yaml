@@ -2,13 +2,13 @@
 # installer (x64, built on windows-latest). Bump PackageVersion + InstallerUrl +
 # InstallerSha256 (uppercase) on each release.
 PackageIdentifier: Tylergibbs1.Substrate
-PackageVersion: 0.3.0
+PackageVersion: 0.3.4
 InstallerType: nullsoft
 Scope: user
 UpgradeBehavior: install
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/tylergibbs1/substrate/releases/download/v0.3.0/Substrate-Setup-0.3.0.exe
-    InstallerSha256: DA49913BB1EBD92C44549865A50EA7F50F32E863E4DF600A3DD7D182EAD021D4
+    InstallerUrl: https://github.com/tylergibbs1/substrate/releases/download/v0.3.4/Substrate-Setup-0.3.4.exe
+    InstallerSha256: 8843D00BCF7BA30E9B507AAE30667A008FD23E93BAA68E88C50BA17A7266952B
 ManifestType: installer
 ManifestVersion: 1.6.0

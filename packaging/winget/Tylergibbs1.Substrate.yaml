@@ -1,7 +1,7 @@
 # winget version manifest. Submitted (with the other two) as a PR to
-# microsoft/winget-pkgs under manifests/t/Tylergibbs1/Substrate/0.3.0/.
+# microsoft/winget-pkgs under manifests/t/Tylergibbs1/Substrate/0.3.4/.
 PackageIdentifier: Tylergibbs1.Substrate
-PackageVersion: 0.3.0
+PackageVersion: 0.3.4
 DefaultLocale: en-US
 ManifestType: version
 ManifestVersion: 1.6.0

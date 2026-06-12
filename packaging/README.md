@@ -1,7 +1,7 @@
 # Packaging / distribution
 
 Drafts for the two package-registry channels (on top of the GitHub Release that
-`.github/workflows/release.yml` publishes). Both reference the **v0.3.0**
+`.github/workflows/release.yml` publishes). Both reference the **v0.3.4**
 artifacts; bump the version + SHA256 on each release.
 
 ## Homebrew (macOS)
@@ -31,8 +31,8 @@ shasum -a 256 Substrate-<v>-arm64.dmg
 Easiest path is the official tool:
 ```sh
 winget install wingetcreate
-wingetcreate update Tylergibbs1.Substrate --version 0.3.0 \
-  --urls https://github.com/tylergibbs1/substrate/releases/download/v0.3.0/Substrate-Setup-0.3.0.exe \
+wingetcreate update Tylergibbs1.Substrate --version 0.3.4 \
+  --urls https://github.com/tylergibbs1/substrate/releases/download/v0.3.4/Substrate-Setup-0.3.4.exe \
   --submit
 ```
 `wingetcreate` recomputes the SHA256 and opens the PR. To validate locally first:
