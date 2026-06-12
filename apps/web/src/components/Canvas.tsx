@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw, Sparkles, Check, X, ImageOff, AlertTriangle } from "lucide-react";
 import { api, blobUrl, type Variation } from "../lib/api.js";
+import { useEditor } from "../store.js";
 import { useSlideActions } from "../lib/slideActions.js";
 import { Button, Chip, cx, Eyebrow, IconButton } from "../ui.js";
 import { DiffView } from "./DiffView.js";
@@ -27,15 +28,34 @@ export function Canvas({ detail, slide }: { detail: DeckDetail; slide: Slide | n
 function SlideCanvas({ detail, slide }: { detail: DeckDetail; slide: Slide }) {
   const qc = useQueryClient();
   const actions = useSlideActions(detail.deck.id);
+  const setNotice = useEditor((s) => s.setNotice);
   const [draft, setDraft] = useState(slide.prompt);
   const [proposeMode, setProposeMode] = useState(false);
   const [variations, setVariations] = useState<Variation[] | null>(null);
 
-  // Keep the editor in sync when the slide's prompt changes underneath us
-  // (e.g. an agent edit applied over MCP) — but don't stomp unsaved local edits.
-  useEffect(() => {
+  // Keep the editor in sync when the slide's prompt changes underneath us (an
+  // agent edit over MCP, a WS refetch) WITHOUT stomping unsaved local edits.
+  // `synced` is the last server value we adopted; fast-forward the draft only on a
+  // slide switch, or when the human hasn't typed since (draft still equals it).
+  // If the server moves while the human has unsaved edits, keep their text and
+  // flag the collision (React's adjust-state-on-prop-change pattern, no effect).
+  const [synced, setSynced] = useState({ id: slide.id, prompt: slide.prompt });
+  const [collided, setCollided] = useState(false);
+  if (synced.id !== slide.id) {
+    setSynced({ id: slide.id, prompt: slide.prompt });
     setDraft(slide.prompt);
-  }, [slide.id, slide.prompt]);
+    setCollided(false);
+  } else if (synced.prompt !== slide.prompt) {
+    // The server value moved. If the human had no unsaved edits (draft still equals
+    // the value we last adopted), fast-forward. A collision is real only when the
+    // human has unsaved text that differs from the NEW server value — so saving
+    // (which makes slide.prompt === draft) clears the flag instead of latching it
+    // forever, and an ordinary save with no agent involved never trips it.
+    const hadLocalEdits = draft !== synced.prompt;
+    setSynced({ id: slide.id, prompt: slide.prompt });
+    if (!hadLocalEdits) setDraft(slide.prompt);
+    setCollided(hadLocalEdits && draft !== slide.prompt);
+  }
 
   // Track image load failure so a missing/expired blob shows a recoverable
   // state instead of the browser's broken-image glyph. Reset during render when
@@ -82,7 +102,12 @@ function SlideCanvas({ detail, slide }: { detail: DeckDetail; slide: Slide }) {
   });
   const makeVariations = useMutation({
     mutationFn: () => api.variations(slide.id, 4),
-    onSuccess: (v) => setVariations(v),
+    onSuccess: (v) =>
+      // The server renders each variation independently and returns the ones that
+      // landed; an empty array means every render failed (e.g. provider down), not
+      // success-with-nothing. Surface that instead of opening an empty picker.
+      v.length > 0 ? setVariations(v) : setNotice("Couldn't generate variations right now — the image provider may be unavailable."),
+    onError: () => setNotice("Couldn't generate variations right now — please try again."),
   });
   const pick = useMutation({
     mutationFn: (versionId: string) => api.pickVersion(slide.id, versionId),
@@ -203,6 +228,7 @@ function SlideCanvas({ detail, slide }: { detail: DeckDetail; slide: Slide }) {
         <div className="flex items-center justify-between px-3 h-8">
           <Eyebrow>Slide prompt</Eyebrow>
           <span className="flex items-center gap-2">
+            {collided && <Chip tone="agent">changed by the agent · your edits are unsaved</Chip>}
             {dirty && <Chip tone="warn">unsaved</Chip>}
             {detail.deck.reviewMode && <Chip tone="agent">review mode → proposes</Chip>}
           </span>

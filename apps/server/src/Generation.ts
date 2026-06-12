@@ -201,7 +201,12 @@ const make = Effect.gen(function* () {
       );
 
       const seeds = Array.from({ length: count }, () => newSeed());
-      return yield* Effect.forEach(
+      // Render each variation independently: one provider failure must not discard
+      // the siblings that did succeed (the old forEach short-circuited the whole
+      // batch on the first error, then swallowed it to []). Collect the successes;
+      // log every failure so a total wipeout isn't silent. Partial success returns
+      // what landed; the caller treats an empty result as "none could be made".
+      const outcomes = yield* Effect.forEach(
         seeds,
         (seed) =>
           Effect.gen(function* () {
@@ -218,9 +223,20 @@ const make = Effect.gen(function* () {
               [versionId, slide.id, substrate?.id ?? "unknown", assembledHash, blobRef, seed, result.model, now()],
             );
             return { versionId, imageBlobRef: blobRef, seed };
-          }),
+          }).pipe(
+            // Isolate each render: a provider failure on one seed logs and yields
+            // null, leaving its siblings untouched (DB-write failures still orDie
+            // as the defects they are — this only absorbs the recoverable render E).
+            Effect.catch((e) =>
+              Effect.gen(function* () {
+                yield* Effect.logWarning(`generateVariations: render failed for slide ${slideId}: ${e.message}`);
+                return null;
+              }),
+            ),
+          ),
         { concurrency: config.concurrency },
-      ).pipe(Effect.orElseSucceed(() => []));
+      );
+      return outcomes.filter((o) => o !== null);
     });
 
   const jobStats: GenerationShape["jobStats"] = Effect.gen(function* () {

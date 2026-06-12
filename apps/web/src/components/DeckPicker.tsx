@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, ArrowRight, Loader2, Wand2, KeyRound, Sparkles, FileCode2, Settings, Plug, FolderOpen, X } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useEditor } from "../store.js";
-import { Button, cx } from "../ui.js";
+import { Button, cx, Eyebrow } from "../ui.js";
 import { Wordmark } from "./Mark.js";
 import type { AspectRatio } from "@substrate/contracts";
 
@@ -154,7 +154,7 @@ export function DeckPicker() {
               className="mx-auto flex items-center gap-2 rounded-full border border-[color-mix(in_oklab,var(--color-warn)_40%,transparent)] bg-[color-mix(in_oklab,var(--color-warn)_8%,transparent)] px-3 py-1.5 text-[11px] text-warn hover:brightness-110 transition-[filter]"
             >
               <KeyRound size={12} />
-              Using the offline preview renderer — add your OpenAI API key to render with GPT Image 2
+              Using the offline preview renderer. Add your OpenAI API key to render with GPT Image 2
             </button>
           )}
 
@@ -175,7 +175,7 @@ export function DeckPicker() {
                   <textarea
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
-                    placeholder="Describe your deck — a topic, an audience, a goal. An agent designs the look and writes every slide."
+                    placeholder="Describe your deck: a topic, an audience, a goal. An agent designs the look and writes every slide."
                     rows={3}
                     aria-label="Deck topic"
                     className="w-full bg-transparent px-4 pb-1 text-[15px] leading-relaxed text-fg placeholder:text-fg-faint outline-none resize-none"
@@ -236,14 +236,14 @@ export function DeckPicker() {
                     ) : (
                       <button type="button" onClick={pickContext} className="inline-flex items-center gap-1.5 text-[11px] text-fg-faint hover:text-fg transition-colors">
                         <FolderOpen size={12} />{" "}
-                        {contextPaths.length ? "Add another folder or file" : "Add context — point the agent at folders or files"}
+                        {contextPaths.length ? "Add another folder or file" : "Add context: point the agent at folders or files"}
                       </button>
                     )}
                   </div>
                 </>
               ) : (
                 <p className="px-4 pt-1.5 pb-3 text-[12.5px] leading-relaxed text-fg-faint">
-                  You'll start with a blank deck — add and write each slide yourself. Turn on the agent to have one built for you.
+                  You'll start with a blank deck. Add and write each slide yourself, or turn on the agent to have one built for you.
                 </p>
               )}
             </div>
@@ -322,7 +322,7 @@ export function DeckPicker() {
           {/* Design — two labeled groups: curated presets, and bring-your-own. */}
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mono text-[10px] uppercase tracking-wider text-fg-faint w-[66px] shrink-0">Presets</span>
+              <Eyebrow className="w-[66px] shrink-0">Presets</Eyebrow>
               {presets.data?.map((p) => (
                 <button type="button"
                   key={p.id}
@@ -345,7 +345,7 @@ export function DeckPicker() {
                 No row-gap in this subgroup so those reveals collapse to a true 0. */}
             <div className="grid">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="mono text-[10px] uppercase tracking-wider text-fg-faint w-[66px] shrink-0">Your own</span>
+                <Eyebrow className="w-[66px] shrink-0">Your own</Eyebrow>
                 <button type="button"
                   onClick={() => setPresetId("custom")}
                   aria-pressed={isCustom}
@@ -389,7 +389,7 @@ export function DeckPicker() {
                   onChange={(e) => setCustomStyle(e.target.value)}
                   rows={3}
                   tabIndex={isCustom ? 0 : -1}
-                  placeholder="e.g. Bold Swiss design — huge Helvetica headlines, red and black on white, hard grid, lots of negative space, no gradients."
+                  placeholder="e.g. Bold Swiss design: huge Helvetica headlines, red and black on white, hard grid, lots of negative space, no gradients."
                   className="w-full bg-ink-3 border border-line-2 rounded-lg px-3 py-2 outline-none focus:border-accent resize-none leading-relaxed text-[12px]"
                 />
               </div>
@@ -421,7 +421,7 @@ export function DeckPicker() {
                   ))}
                 </select>
                 <span className="text-[10px] text-fg-faint">
-                  Compiled into this deck's design — the image model approximates the look (palette, type, mood), not exact tokens.
+                  Compiled into this deck's design: the image model approximates the look (palette, type, mood), not exact tokens.
                 </span>
               </div>
             </div>
@@ -438,7 +438,7 @@ export function DeckPicker() {
         {/* Existing decks */}
         {decks.data && decks.data.length > 0 && (
           <section className="grid gap-2">
-            <div className="mono text-[10px] uppercase tracking-wider text-fg-faint">Your decks</div>
+            <Eyebrow className="block">Your decks</Eyebrow>
             <div className="grid gap-1.5">
               {decks.data.map((d) => (
                 <button type="button"

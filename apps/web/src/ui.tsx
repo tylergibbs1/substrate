@@ -1,7 +1,9 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, RefObject } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
 import { Switch as BaseSwitch } from "@base-ui/react/switch";
+import { Dialog as BaseDialog } from "@base-ui/react/dialog";
+import { X } from "lucide-react";
 import { cn } from "./lib/cn.js";
 
 /**
@@ -17,7 +19,7 @@ const button = cva(
   // from size, never weight. Specific transition (never `all`) covering colors +
   // scale; scale-on-press gives tactile feedback (§12). Active state is disabled
   // via the `static` prop.
-  "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-normal transition-[color,background-color,border-color,filter,transform] duration-150 disabled:opacity-40 disabled:cursor-not-allowed select-none",
+  "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-normal transition-[color,background-color,border-color,filter,transform] duration-150 disabled:opacity-40 disabled:cursor-not-allowed select-none outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
   {
     variants: {
       variant: {
@@ -72,13 +74,76 @@ export function IconButton({
       title={label}
       {...rest}
       className={cn(
-        "grid place-items-center w-7 h-7 rounded-full text-fg-faint transition-colors hover:bg-ink-2",
+        "grid place-items-center w-7 h-7 rounded-full text-fg-faint transition-colors hover:bg-ink-2 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
         tone === "accent" ? "hover:text-accent" : "hover:text-fg",
         className,
       )}
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Modal — one dialog shell for every overlay (connect-agent, settings, key
+ * prompt). Built on Base UI Dialog so focus is trapped, Escape and backdrop
+ * dismiss work, body scroll locks, focus returns to the trigger on close, and
+ * the aria role/labelling are correct — none of which the hand-rolled
+ * `fixed inset-0` shells had (PRD §7 quality / a11y). Callers pass a title and
+ * body; width is overridable via `className` (defaults to max-w-xl).
+ */
+export function Modal({
+  open,
+  onClose,
+  title,
+  icon,
+  children,
+  className,
+  initialFocus,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title?: ReactNode;
+  icon?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  initialFocus?: RefObject<HTMLElement | null>;
+}) {
+  return (
+    <BaseDialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <BaseDialog.Portal>
+        <BaseDialog.Backdrop className="fixed inset-0 z-50 bg-ink-0/60" />
+        <BaseDialog.Popup
+          {...(initialFocus ? { initialFocus } : {})}
+          className={cn(
+            "animate-enter fixed left-1/2 top-[10vh] z-50 w-full max-w-xl -translate-x-1/2 overflow-hidden rounded-lg border border-line-2 bg-ink-1 shadow-2xl outline-none",
+            className,
+          )}
+        >
+          {title !== undefined && (
+            <header className="flex items-center justify-between px-4 h-11 border-b border-line">
+              <BaseDialog.Title className="flex items-center gap-2 text-[13px] font-normal">
+                {icon}
+                {title}
+              </BaseDialog.Title>
+              <BaseDialog.Close
+                render={
+                  <IconButton label="Close" className="-mr-1">
+                    <X size={14} />
+                  </IconButton>
+                }
+              />
+            </header>
+          )}
+          {children}
+        </BaseDialog.Popup>
+      </BaseDialog.Portal>
+    </BaseDialog.Root>
   );
 }
 

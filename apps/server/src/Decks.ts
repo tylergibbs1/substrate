@@ -715,9 +715,31 @@ const make = Effect.gen(function* () {
 
   const reorder: DecksShape["reorder"] = (deckId, orderedSlideIds) =>
     Effect.gen(function* () {
-      yield* Effect.forEach(orderedSlideIds, (sid, i) =>
-        sql.run("UPDATE slides SET order_index = ? WHERE id = ? AND deck_id = ?", [i, sid, deckId]),
-      );
+      // Read the current slide ids, validate the request is a true permutation of
+      // them, and apply every order_index — all in ONE synchronous block. A stale
+      // client or buggy agent could send a list that drops, duplicates, or invents
+      // IDs, which applied blindly corrupts order_index (gaps, collisions, slides
+      // stranded at their old position). Validating and writing in the same sync
+      // turn (no fiber suspension between) means a concurrent insert/delete can't
+      // land between the check and the writes and make the validation stale.
+      const unique = new Set(orderedSlideIds);
+      const result = yield* sql.sync((db) => {
+        const rows = db.prepare("SELECT id FROM slides WHERE deck_id = ?").all(deckId) as Array<{ id: string }>;
+        const actual = new Set(rows.map((r) => r.id));
+        const isPermutation =
+          orderedSlideIds.length === rows.length &&
+          unique.size === orderedSlideIds.length && // no duplicates
+          orderedSlideIds.every((sid) => actual.has(sid));
+        if (!isPermutation) return { ok: false as const, deckCount: rows.length };
+        const stmt = db.prepare("UPDATE slides SET order_index = ? WHERE id = ? AND deck_id = ?");
+        orderedSlideIds.forEach((sid, i) => stmt.run(i, sid, deckId));
+        return { ok: true as const };
+      });
+      if (!result.ok) {
+        return yield* die(
+          `reorder must be a permutation of the deck's slides (got ${orderedSlideIds.length}, deck has ${result.deckCount})`,
+        );
+      }
       yield* events.publish({ type: "deck-changed", deckId });
     });
 

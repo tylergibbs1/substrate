@@ -21,6 +21,7 @@ export function TopBar({ detail }: { detail: DeckDetail }) {
   const editorView = useEditor((s) => s.editorView);
   const setEditorView = useEditor((s) => s.setEditorView);
   const setPresenting = useEditor((s) => s.setPresenting);
+  const setNotice = useEditor((s) => s.setNotice);
   const [exported, setExported] = useState<{ destination: string; note?: string } | null>(null);
 
   const review = useMutation({
@@ -34,6 +35,13 @@ export function TopBar({ detail }: { detail: DeckDetail }) {
   const doExport = useMutation({
     mutationFn: (format: ExportFormat) => downloadDeckExport(detail.deck.id, format),
     onSuccess: (r) => setExported({ destination: r.destination, ...(r.note !== undefined ? { note: r.note } : {}) }),
+    onError: (err) => {
+      // Dismissing the destination picker is a normal cancel, not a failure —
+      // stay silent. Anything else (server error, blob read, write fault) is a
+      // real failure the user must see, not a no-op click.
+      if (err instanceof Error && err.name === "ExportCancelled") return;
+      setNotice(`Export failed: ${err instanceof Error ? err.message : "unknown error"}`);
+    },
   });
 
   return (

@@ -36,6 +36,7 @@ import { Provider } from "./Provider.ts";
 import { Generation } from "./Generation.ts";
 import { Events } from "./Events.ts";
 import { Settings } from "./Settings.ts";
+import { AgentActivity } from "./AgentActivity.ts";
 import { runtime } from "./runtime.ts";
 
 /**
@@ -75,7 +76,7 @@ async function readBody(req: http.IncomingMessage): Promise<unknown> {
   }
 }
 
-type AppServices = Decks | Generation | Provider | Events | Settings;
+type AppServices = Decks | Generation | Provider | Events | Settings | AgentActivity;
 
 const run = <A, E>(effect: Effect.Effect<A, E, AppServices>): Promise<A> => runtime.runPromise(effect);
 
@@ -268,8 +269,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     const emitStep = (label: string, detail: string | null) =>
       void run(Effect.flatMap(Events, (e) => e.publish({ type: "agent-step", deckId, agent: "deck-builder", label, detail })));
     // Bracket the whole run so the feed/working state spans it (not the 4s edge).
-    const emitRun = (active: boolean) =>
-      void run(Effect.flatMap(Events, (e) => e.publish({ type: "agent-run", deckId, active })));
+    const emitRun = (active: boolean) => emitAgentRun(deckId, active);
     // Wait until every slide reaches a terminal render state (or a timeout), so
     // the polish pass can actually SEE the renders.
     const waitForDeckRenders = async (timeoutMs = 120000): Promise<void> => {
@@ -364,8 +364,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const deck = await run(Effect.flatMap(Decks, (d) => d.getDeck(deckId)));
       if (!deck) return json(res, 404, { error: "deck not found" });
       // Bracket the run so the live feed/working state spans it (not the 4s edge).
-      const emitRun = (active: boolean) =>
-        void run(Effect.flatMap(Events, (e) => e.publish({ type: "agent-run", deckId, active })));
+      const emitRun = (active: boolean) => emitAgentRun(deckId, active);
       emitRun(true);
       try {
         return json(
@@ -499,6 +498,17 @@ const mcpSessions = new Map<string, McpSession>();
 const publishMcpCount = () =>
   run(Effect.flatMap(Events, (e) => e.publish({ type: "mcp-clients", count: mcpSessions.size })));
 
+// In-flight in-app agent runs, keyed by deck. agent-run only fires on its edges
+// (once true at start, once false at end), so we keep the live set here to replay
+// to any WS client that connects mid-run — otherwise a reconnect would strand the
+// editor out of "working" until the run happened to end.
+const activeRuns = new Set<string>();
+const emitAgentRun = (deckId: string, active: boolean): void => {
+  if (active) activeRuns.add(deckId);
+  else activeRuns.delete(deckId);
+  void run(Effect.flatMap(Events, (e) => e.publish({ type: "agent-run", deckId, active })));
+};
+
 function bearerOk(req: http.IncomingMessage): boolean {
   const header = req.headers["authorization"];
   return typeof header === "string" && header === `Bearer ${config.mcpToken}`;
@@ -610,6 +620,19 @@ export async function startServer(): Promise<http.Server> {
     alive.add(ws);
     ws.on("pong", () => alive.add(ws));
     ws.send(JSON.stringify({ type: "mcp-clients", count: mcpSessions.size } satisfies ServerEvent));
+    // Replay current presence so a client that just (re)connected — and cleared its
+    // transient agent state on open — adopts the truth: any in-flight run and any
+    // live agent activity. Both signals only emit on their edges, so without this
+    // a reconnect mid-run would leave the editor stuck out of "working".
+    for (const deckId of activeRuns) {
+      ws.send(JSON.stringify({ type: "agent-run", deckId, active: true } satisfies ServerEvent));
+    }
+    void run(Effect.flatMap(AgentActivity, (a) => a.snapshot)).then((entries) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      for (const { deckId, agent } of entries) {
+        ws.send(JSON.stringify({ type: "agent-activity", deckId, agent, active: true } satisfies ServerEvent));
+      }
+    });
     ws.on("close", () => clients.delete(ws));
   });
   const heartbeat = setInterval(() => {
