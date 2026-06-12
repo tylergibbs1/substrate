@@ -1,6 +1,10 @@
-# Substrate
+<p align="center">
+  <img src="brand/substrate-icon-512.png" alt="Substrate" width="120" height="120" />
+</p>
 
-> A desktop app for AI-generated raster slide decks where **the prompt is the only editable artifact.**
+<h1 align="center">Substrate</h1>
+
+<p align="center">A desktop app for AI-generated raster slide decks where <strong>the prompt is the only editable artifact.</strong></p>
 
 An image model returns pixels, and pixels can't be diffed, reviewed, or
 co-authored. Substrate doesn't try to make pixels editable. The only things you
