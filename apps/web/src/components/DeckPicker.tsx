@@ -175,7 +175,7 @@ export function DeckPicker() {
                   <textarea
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
-                    placeholder="Describe your deck — a topic, an audience, a goal. An agent designs the look and writes every slide."
+                    placeholder="Describe your deck: a topic, an audience, a goal. An agent designs the look and writes every slide."
                     rows={3}
                     aria-label="Deck topic"
                     className="w-full bg-transparent px-4 pb-1 text-[15px] leading-relaxed text-fg placeholder:text-fg-faint outline-none resize-none"
@@ -389,7 +389,7 @@ export function DeckPicker() {
                   onChange={(e) => setCustomStyle(e.target.value)}
                   rows={3}
                   tabIndex={isCustom ? 0 : -1}
-                  placeholder="e.g. Bold Swiss design — huge Helvetica headlines, red and black on white, hard grid, lots of negative space, no gradients."
+                  placeholder="e.g. Bold Swiss design: huge Helvetica headlines, red and black on white, hard grid, lots of negative space, no gradients."
                   className="w-full bg-ink-3 border border-line-2 rounded-lg px-3 py-2 outline-none focus:border-accent resize-none leading-relaxed text-[12px]"
                 />
               </div>
