@@ -21,6 +21,7 @@
     "typecheck": "pnpm -r typecheck",
     "tc": "pnpm -r typecheck",
     "lint": "oxlint .",
+    "test:smoke": "node apps/server/test/filecontext.smoke.mjs",
     "desktop": "pnpm --filter @substrate/desktop start"
   },
   "devDependencies": {

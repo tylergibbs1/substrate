@@ -23,3 +23,20 @@ jobs:
       # Build the web app + bundle the server — the same prep the release uses, so
       # a packaging break is caught here, not on a release tag.
       - run: pnpm build:dist
+
+  # Prove the cross-platform runtime paths actually work on each OS — Windows
+  # especially, where FileContext uses NTFS junctions, cmd.exe, taskkill, and
+  # forward-slash glob matching instead of the POSIX equivalents.
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: FileContext smoke test
+        run: node apps/server/test/filecontext.smoke.mjs
