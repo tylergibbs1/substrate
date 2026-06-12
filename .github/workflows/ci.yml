@@ -40,3 +40,26 @@ jobs:
           node-version: 24
       - name: FileContext smoke test
         run: node apps/server/test/filecontext.smoke.mjs
+
+  # Boot the actual bundled server on each OS and verify it answers /api/status —
+  # the real "does it run on Windows" check (node:sqlite, HTTP/WS/MCP, %APPDATA%
+  # data dir, loopback bind) on a genuine windows-latest runner, short of the GUI.
+  app-boot:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:dist
+      - name: Server boots + answers on this OS
+        run: node apps/server/test/server-boot.smoke.mjs

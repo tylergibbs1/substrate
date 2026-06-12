@@ -63,3 +63,53 @@ To confirm a build is notarized:
 ```sh
 spctl -a -vvv /Applications/Substrate.app     # → "accepted, source=Notarized Developer ID"
 ```
+
+---
+
+# Windows code signing (kill the SmartScreen warning)
+
+The Windows `.exe` is currently **unsigned**, so the first run shows SmartScreen's
+"Windows protected your PC" prompt (users click **More info → Run anyway**). The
+release workflow already reads `WIN_CSC_LINK` + `WIN_CSC_KEY_PASSWORD` (the same
+shape as the Mac path) — set them and the next `pnpm release` ships a signed
+installer. No code changes.
+
+## 1. Get a code-signing certificate
+
+From a CA (DigiCert, Sectigo, SSL.com, …). Two tiers:
+
+- **OV (Organization Validation)** — ~$200–400/yr. Signs the binary; SmartScreen
+  reputation accrues over downloads/time, so the warning fades rather than
+  vanishing on day one.
+- **EV (Extended Validation)** — pricier, grants **instant** SmartScreen
+  reputation (no warning from the first download).
+
+You'll receive a `.pfx` (PKCS#12) + its password.
+
+> EV certs now ship on a hardware token or cloud HSM and **cannot be exported to
+> a `.pfx`**, so they don't drop into `WIN_CSC_LINK` — they need cloud signing
+> (Azure Trusted Signing, SSL.com eSigner, etc.) wired as a custom sign step.
+> **OV is the turn-key path for this CI.** Start there unless you need day-one
+> zero-warning.
+
+## 2. Base64 the .pfx + set the secrets
+
+```sh
+base64 -i Substrate.pfx | pbcopy          # macOS  (Linux: base64 -w0 Substrate.pfx)
+gh secret set WIN_CSC_LINK                 # paste the base64
+gh secret set WIN_CSC_KEY_PASSWORD         # the .pfx password
+```
+
+(Run these yourself — they carry private key material.)
+
+## 3. Release
+
+`pnpm release X.Y.Z` — the Windows job signs the NSIS installer with the cert and
+timestamps the signature (so it stays valid after the cert expires). macOS/Linux
+are unaffected. Confirm on Windows:
+
+```powershell
+Get-AuthenticodeSignature .\Substrate-Setup-X.Y.Z.exe   # Status → Valid
+```
+
+Then refresh the winget manifest's `InstallerSha256` for the new signed `.exe`.
