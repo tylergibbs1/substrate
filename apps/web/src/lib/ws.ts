@@ -112,11 +112,12 @@ export function useServerEvents(activeDeckId: string | null, onMcpClients: (n: n
       ws.onopen = () => {
         attempt = 0;
         setWsConnected(true);
-        // A run can begin and end entirely while the socket is down — we'd miss
-        // the closing agent-run / agent-activity edges and be stuck rendering
-        // "working" forever. Clear the transient presence on every (re)connect;
-        // an agent that's genuinely still active re-establishes it on its next
-        // edit or step. (On the first connect this is a harmless no-op.)
+        // A run can begin and/or end entirely while the socket is down — we'd miss
+        // the agent-run / agent-activity edges either way and be stuck rendering
+        // (or never showing) "working". Clear the transient presence on every
+        // (re)connect; the server immediately replays a snapshot of any in-flight
+        // run / live activity over this socket (see http.ts wss "connection"), so
+        // we re-adopt the truth right after. (First connect: a harmless no-op.)
         setAgentActivity(null);
         setAgentRun(null);
         // We may have missed events while the socket was down — resync the

@@ -34,6 +34,13 @@ interface Live {
 export interface AgentActivityShape {
   /** Register an agent action on a deck; (re)arms the idle countdown. */
   readonly touch: (deckId: string, agent: string) => Effect.Effect<void>;
+  /**
+   * The decks with live agent activity right now (active `touch` not yet idled
+   * out). A freshly (re)connected WS client gets this replayed so it adopts the
+   * current presence instead of guessing — `active:true` only ever fires on the
+   * leading edge, so a reconnect mid-session would otherwise miss it.
+   */
+  readonly snapshot: Effect.Effect<ReadonlyArray<{ deckId: string; agent: string }>>;
 }
 
 export class AgentActivity extends Context.Service<AgentActivity, AgentActivityShape>()(
@@ -76,6 +83,10 @@ export const AgentActivityLayer = Layer.effect(
         emit(deckId, agent, true);
       });
 
-    return { touch };
+    const snapshot: AgentActivityShape["snapshot"] = Effect.sync(() =>
+      Array.from(live.entries(), ([deckId, entry]) => ({ deckId, agent: entry.agent })),
+    );
+
+    return { touch, snapshot };
   }),
 );

@@ -46,13 +46,15 @@ function SlideCanvas({ detail, slide }: { detail: DeckDetail; slide: Slide }) {
     setDraft(slide.prompt);
     setCollided(false);
   } else if (synced.prompt !== slide.prompt) {
+    // The server value moved. If the human had no unsaved edits (draft still equals
+    // the value we last adopted), fast-forward. A collision is real only when the
+    // human has unsaved text that differs from the NEW server value — so saving
+    // (which makes slide.prompt === draft) clears the flag instead of latching it
+    // forever, and an ordinary save with no agent involved never trips it.
+    const hadLocalEdits = draft !== synced.prompt;
     setSynced({ id: slide.id, prompt: slide.prompt });
-    if (draft === synced.prompt) {
-      setDraft(slide.prompt);
-      setCollided(false);
-    } else {
-      setCollided(true);
-    }
+    if (!hadLocalEdits) setDraft(slide.prompt);
+    setCollided(hadLocalEdits && draft !== slide.prompt);
   }
 
   // Track image load failure so a missing/expired blob shows a recoverable

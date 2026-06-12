@@ -81,16 +81,20 @@ p {
 }
 
 /* Keyboard focus is visible by default (accent ring), pointer focus stays quiet.
- * Button/IconButton carry their own focus-visible outline; this catches every
- * other interactive surface (links, inputs, textareas, Base UI controls) so
- * keyboard navigation is never invisible. (a11y — PRD §7 quality.) */
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-:focus:not(:focus-visible) {
-  outline: none;
+ * This is a fallback: it lives in @layer base so any control that owns its focus
+ * treatment via utilities still wins — Button/IconButton (outline-accent) keep
+ * their ring, and surfaces that opt into a border-only focus (outline-none +
+ * focus-visible:border-accent, e.g. SlideRail cards and the deck textareas) keep
+ * theirs without an extra ring. No border-radius here: the outline already
+ * follows each element's own corner radius. (a11y — PRD §7 quality.) */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
 }
 
 /* Quiet, thin scrollbars — chrome should recede (§7.3). */
