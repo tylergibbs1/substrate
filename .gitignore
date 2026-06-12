@@ -5,6 +5,13 @@ out/
 .turbo/
 *.tsbuildinfo
 .DS_Store
+
+# apps/desktop/build is electron-builder's RESOURCES dir (committed icons +
+# entitlements), not build output — keep it tracked despite the broad `build/`
+# rule above. Without this the brand icon never reaches CI and releases ship the
+# default Electron icon.
+!apps/desktop/build/
+!apps/desktop/build/**
 .env
 .env.local
 data/
