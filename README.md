@@ -17,6 +17,16 @@ A human edits these in the UI; an agent edits the exact same prompts over MCP.
 The rendered image is a pure build output of `mainDesignPrompt + slidePrompt`.
 Nothing is composited on top — no text layer, no shapes, no vector overlay.
 
+## Demo
+
+<p align="center">
+  <a href="https://youtu.be/DVRfEnbQqJ8">
+    <img src="https://i.ytimg.com/vi/DVRfEnbQqJ8/hqdefault.jpg" alt="Substrate demo — watch on YouTube" width="480" />
+  </a>
+</p>
+
+<p align="center"><em><a href="https://youtu.be/DVRfEnbQqJ8">▶ Watch the demo on YouTube</a></em></p>
+
 This repo is a **runnable vertical slice** of the PRD (v0.3): the full editor
 UI, an Effect server with `node:sqlite` persistence + a GPT Image 2 provider
 adapter + a live MCP server, and an Electron shell. It runs **with no API key**
@@ -37,9 +47,44 @@ Grab the latest desktop build from
 - **Windows** — `Substrate-Setup-*.exe`
 - **Linux** — `Substrate-*.AppImage`
 
-> Builds are currently **unsigned**, so the OS will warn about an unidentified
-> developer (macOS: right-click → Open; Windows: More info → Run anyway). Add your
-> OpenAI API key in-app to render with GPT Image 2, or use the offline preview.
+### Why Windows says "Windows protected your PC"
+
+The installers are currently **unsigned** (no code-signing certificate yet), so
+Windows SmartScreen shows a blue **"Windows protected your PC"** prompt on first
+run. This is expected for unsigned indie apps — it is not a virus warning. To
+proceed:
+
+1. Click **More info**.
+2. Click **Run anyway**.
+
+Alternatively, before running: right-click `Substrate-Setup-*.exe` → **Properties**
+→ check **Unblock** → **OK**.
+
+The **macOS** `.dmg` is signed with a Developer ID and notarized by Apple, so it
+opens with no Gatekeeper warning. Only the Windows installer is unsigned.
+
+### Verify your download (SHA-512)
+
+Every release attaches electron-builder's `latest.yml` (Windows), `latest-mac.yml`
+(macOS), and `latest-linux.yml` (Linux), each containing the base64 **SHA-512** of
+its installer. To confirm a download is genuine, hash the file and compare it to
+the `sha512:` field in the matching `.yml`:
+
+```powershell
+# Windows (PowerShell) — the .yml value is base64, so emit base64 to compare:
+$bytes = [Security.Cryptography.SHA512]::Create().ComputeHash([IO.File]::ReadAllBytes("Substrate-Setup-X.Y.Z.exe"))
+[Convert]::ToBase64String($bytes)
+```
+
+```bash
+# macOS / Linux
+openssl dgst -sha512 -binary Substrate-X.Y.Z.dmg | base64
+```
+
+The printed value must match `sha512:` in the release's `.yml` for that file.
+
+> Add your OpenAI API key in-app to render with GPT Image 2, or use the offline
+> preview.
 
 Maintainers cut a release by pushing a tag (`git tag v0.3.0 && git push --tags`):
 it builds installers for all three platforms and publishes them to the Release
@@ -143,10 +188,11 @@ TypeScript), persisting via the built-in `node:sqlite` — no native build step.
   `node:sqlite` persistence, the editor, prompt versioning + attribution +
   diffs, propose/approve review flow, seed-pinned regeneration, variations,
   rollback, blob storage, live WS updates, MCP over HTTP + stdio, the
-  `Provider` adapter abstraction, and the GPT Image 2 adapter.
+  `Provider` adapter abstraction, the GPT Image 2 adapter, and single-file
+  **PPTX** export (each slide full-bleed, its prompt in the speaker notes).
 - **Mocked when offline:** image rendering and outline generation fall back to
   deterministic local generators with no API key.
-- **Stubbed / follow-up:** single-file PDF & PPTX packaging (export currently
+- **Stubbed / follow-up:** single-file PDF packaging (PDF export currently
   emits an image bundle + `notes.md` with the slide prompts as text-of-record);
   SSH/Tailscale remote access; the Expo viewer and Astro marketing site.
   (`vite-plus`/`vp` is t3code's toolchain; this slice uses Vite + `tsgo` directly.)
