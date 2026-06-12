@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, ArrowRight, Loader2, Wand2, KeyRound, Sparkles, FileCode2, Settings, Plug, FolderOpen, X } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useEditor } from "../store.js";
-import { Button, cx } from "../ui.js";
+import { Button, cx, Eyebrow } from "../ui.js";
 import { Wordmark } from "./Mark.js";
 import type { AspectRatio } from "@substrate/contracts";
 
@@ -322,7 +322,7 @@ export function DeckPicker() {
           {/* Design — two labeled groups: curated presets, and bring-your-own. */}
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mono text-[10px] uppercase tracking-wider text-fg-faint w-[66px] shrink-0">Presets</span>
+              <Eyebrow className="w-[66px] shrink-0">Presets</Eyebrow>
               {presets.data?.map((p) => (
                 <button type="button"
                   key={p.id}
@@ -345,7 +345,7 @@ export function DeckPicker() {
                 No row-gap in this subgroup so those reveals collapse to a true 0. */}
             <div className="grid">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="mono text-[10px] uppercase tracking-wider text-fg-faint w-[66px] shrink-0">Your own</span>
+                <Eyebrow className="w-[66px] shrink-0">Your own</Eyebrow>
                 <button type="button"
                   onClick={() => setPresetId("custom")}
                   aria-pressed={isCustom}
@@ -438,7 +438,7 @@ export function DeckPicker() {
         {/* Existing decks */}
         {decks.data && decks.data.length > 0 && (
           <section className="grid gap-2">
-            <div className="mono text-[10px] uppercase tracking-wider text-fg-faint">Your decks</div>
+            <Eyebrow className="block">Your decks</Eyebrow>
             <div className="grid gap-1.5">
               {decks.data.map((d) => (
                 <button type="button"

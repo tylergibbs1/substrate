@@ -1,8 +1,7 @@
-import { X } from "lucide-react";
 import { useEditor } from "../store.js";
 import { ApiKeyForm } from "./ApiKeyForm.js";
 import { OpenAI } from "./OpenAI.js";
-import { IconButton } from "../ui.js";
+import { Modal } from "../ui.js";
 
 /**
  * Contextual OpenAI-key prompt. Instead of a first-run wall, this appears at the
@@ -13,24 +12,17 @@ import { IconButton } from "../ui.js";
 export function KeyPrompt() {
   const keyPrompt = useEditor((s) => s.keyPrompt);
   const setKeyPrompt = useEditor((s) => s.setKeyPrompt);
-  if (!keyPrompt) return null;
-
   const close = () => setKeyPrompt(null);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] bg-ink-0/60" onClick={close}>
-      <div
-        className="animate-enter w-full max-w-md rounded-lg border border-line bg-ink-1 shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="flex items-center justify-between px-4 h-11 border-b border-line">
-          <span className="flex items-center gap-2 text-[13px] font-normal">
-            <OpenAI className="w-4 h-4 text-fg" /> Connect OpenAI to render
-          </span>
-          <IconButton label="Close" onClick={close} className="-mr-1">
-            <X size={14} />
-          </IconButton>
-        </header>
+    <Modal
+      open={!!keyPrompt}
+      onClose={close}
+      icon={<OpenAI className="w-4 h-4 text-fg" />}
+      title="Connect OpenAI to render"
+      className="max-w-md"
+    >
+      {keyPrompt && (
         <div className="p-4 space-y-3">
           <p className="text-[13px] text-fg-dim text-balance">{keyPrompt.reason}</p>
           <ApiKeyForm
@@ -40,7 +32,7 @@ export function KeyPrompt() {
             }}
           />
         </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   );
 }

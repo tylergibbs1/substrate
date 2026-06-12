@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { X, Copy, Check, Plug } from "lucide-react";
+import { Copy, Check, Plug } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useEditor } from "../store.js";
-import { cx, Eyebrow, IconButton } from "../ui.js";
+import { cx, Eyebrow, Modal } from "../ui.js";
 
 /**
  * "Connect an agent" — surfaces the local MCP endpoint + bearer token and a
@@ -71,8 +71,6 @@ export function ConnectAgent() {
   const deck = useQuery({ queryKey: ["deck", activeDeckId], queryFn: () => api.deck(activeDeckId!), enabled: open && !!activeDeckId });
   const [client, setClient] = useState<"claude-code" | "codex" | "other">("claude-code");
 
-  if (!open) return null;
-
   const url = status.data?.mcpUrl ?? "http://localhost:4321/mcp";
   const token = status.data?.mcpToken ?? "<token>";
   const deckLine = deck.data ? ` Work on the deck titled "${deck.data.deck.title}" (deck_id ${deck.data.deck.id}).` : "";
@@ -98,21 +96,13 @@ Start by calling get_deck to read the current slides and their prompts.`;
   const mcpJson = `{\n  "mcpServers": {\n    "substrate": {\n      "type": "http",\n      "url": "${url}",\n      "headers": { "Authorization": "Bearer ${token}" }\n    }\n  }\n}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] bg-ink-0/60" onClick={() => setOpen(false)}>
-      <div
-        className="animate-enter w-full max-w-xl rounded-lg border border-line-2 bg-ink-1 shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="flex items-center justify-between px-4 h-11 border-b border-line">
-          <span className="flex items-center gap-2 text-[13px] font-normal">
-            <Plug size={14} className="text-accent" /> Connect an agent
-          </span>
-          <IconButton label="Close" onClick={() => setOpen(false)} className="-mr-1">
-            <X size={14} />
-          </IconButton>
-        </header>
-
-        <div className="p-4 space-y-4">
+    <Modal
+      open={open}
+      onClose={() => setOpen(false)}
+      icon={<Plug size={14} className="text-accent" />}
+      title="Connect an agent"
+    >
+      <div className="p-4 space-y-4">
           <p className="text-[12px] text-fg-dim">
             Paste this prompt into your AI client — Claude Code, Codex, Cursor, Claude Desktop — to connect it and let it
             co-edit this deck over MCP.
@@ -156,7 +146,6 @@ Start by calling get_deck to read the current slides and their prompts.`;
             agents edit prompts only, never pixels.
           </p>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

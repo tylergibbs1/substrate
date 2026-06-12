@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, History, RotateCcw, Zap, Brain } from "lucide-react";
 import { api, blobUrl } from "../lib/api.js";
 import { useEditor } from "../store.js";
-import { Chip, cx } from "../ui.js";
+import { Chip, cx, Eyebrow } from "../ui.js";
 import type { DeckDetail, Slide } from "@substrate/contracts";
 
 export function Inspector({ detail, slide }: { detail: DeckDetail; slide: Slide | null }) {
@@ -151,9 +151,7 @@ function HistorySection({ slide, deckId }: { slide: Slide; deckId: string }) {
           ))}
           {history.data && history.data.substrates.length > 0 && (
             <div className="pt-2">
-              <div className="mono text-[10px] uppercase tracking-wider text-fg-faint mb-1">
-                Prompt lineage
-              </div>
+              <Eyebrow className="block mb-1">Prompt lineage</Eyebrow>
               {history.data.substrates.map((s) => (
                 <div key={s.id} className="border-l border-line-2 pl-2 py-1 ml-1">
                   <Chip tone={s.author.kind === "agent" ? "agent" : "accent"}>
@@ -173,7 +171,7 @@ function HistorySection({ slide, deckId }: { slide: Slide; deckId: string }) {
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <div className="mono text-[10px] uppercase tracking-wider text-fg-faint">{label}</div>
+      <Eyebrow className="block">{label}</Eyebrow>
       {children}
     </div>
   );
