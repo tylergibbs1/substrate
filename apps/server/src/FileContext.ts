@@ -30,6 +30,28 @@ import { spawn } from "node:child_process";
  *   huge tree can't blow up the model's context. Binaries and junk dirs skipped.
  */
 
+const isWindows = process.platform === "win32";
+
+// The path tools resolve and display POSIX-style; Windows' path.relative returns
+// backslash-separated, which would never match the forward-slash-anchored globs.
+const toPosix = (p: string): string => (path.sep === "\\" ? p.split(path.sep).join("/") : p);
+
+// Link an attached input into the workspace dir. Directories use an NTFS junction
+// on Windows (no admin / Developer Mode needed; on POSIX the 'junction' type is
+// ignored and a normal symlink is made). Files can't be junctioned, so symlink
+// where the OS allows and copy as the Windows-without-symlink-privilege fallback.
+const linkInto = (target: string, linkPath: string): void => {
+  if (fs.statSync(target).isDirectory()) {
+    fs.symlinkSync(target, linkPath, "junction");
+    return;
+  }
+  try {
+    fs.symlinkSync(target, linkPath, isWindows ? "file" : undefined);
+  } catch {
+    fs.copyFileSync(target, linkPath);
+  }
+};
+
 const READ_MAX_BYTES = 50 * 1024;
 const READ_DEFAULT_LIMIT = 2000;
 const MAX_LINE_LENGTH = 2000;
@@ -122,7 +144,7 @@ export function openFileContext(inputs: string[]): FileContext {
       let name = base;
       for (let k = 2; allocated.has(name); k++) name = `${base}-${k}`;
       allocated.add(name);
-      fs.symlinkSync(r, path.join(ws, name)); // throws → fail the request, never drop silently
+      linkInto(r, path.join(ws, name)); // throws → fail the request, never drop silently
       names.push(name);
     }
     root = fs.realpathSync(ws); // canonicalize (e.g. macOS /var → /private/var)
@@ -138,7 +160,7 @@ export function openFileContext(inputs: string[]): FileContext {
     try {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "substrate-ctx-"));
       tempDirs.push(dir);
-      fs.symlinkSync(focusFile, path.join(dir, path.basename(focusFile)));
+      linkInto(focusFile, path.join(dir, path.basename(focusFile)));
       runCwd = dir;
     } catch {
       runCwd = path.dirname(focusFile);
@@ -156,14 +178,35 @@ export function openFileContext(inputs: string[]): FileContext {
     tempDirs.length = 0;
   };
 
+  // Canonicalize to ONE form before comparing. Windows realpath is inconsistent
+  // between calls — fs.realpathSync may keep an 8.3 short name (RUNNER~1) while the
+  // async/native form expands it (runneradmin), and \\?\ prefixes come and go — so
+  // a junction target and its source root can be the same dir yet compare unequal.
+  // realpathSync.native gives the OS-canonical long form; lower-case for the
+  // case-insensitive NTFS compare. No-op canonicalization difference on POSIX.
+  const canonical = (p: string): string => {
+    let c = p;
+    try {
+      c = fs.realpathSync.native(p);
+    } catch {
+      /* unresolvable (e.g. ENOENT) — fall back to the lexical path */
+    }
+    return isWindows ? c.replace(/^\\\\\?\\/, "").toLowerCase() : c;
+  };
+  const canonRoot = canonical(root);
+  const canonRoots = roots.map(canonical);
+
   const isUnderOrEq = (base: string, p: string): boolean => {
     const r = path.relative(base, p);
     return r === "" || (r !== ".." && !r.startsWith(".." + path.sep) && !path.isAbsolute(r));
   };
   // In-bounds iff the REAL path is the/under the root (workspace-local) or under
-  // any attached input (the symlink targets / each chosen folder).
-  const insideRoots = (real: string): boolean =>
-    isUnderOrEq(root, real) || roots.some((r) => isUnderOrEq(r, real));
+  // any attached input (the symlink targets / each chosen folder). Compare in the
+  // canonical form so Windows short/long/prefix realpath variants still match.
+  const insideRoots = (real: string): boolean => {
+    const c = canonical(real);
+    return isUnderOrEq(canonRoot, c) || canonRoots.some((r) => isUnderOrEq(r, c));
+  };
 
   // Resolve a (possibly relative, possibly "<name>/...") path. Realpath ONLY for
   // the containment check (catches `..` and symlinks pointing out); return the
@@ -310,7 +353,7 @@ export function openFileContext(inputs: string[]): FileContext {
     const re = globToRegExp(pattern);
     const hits: string[] = [];
     for await (const file of walk(base)) {
-      if (re.test(path.relative(base, file))) {
+      if (re.test(toPosix(path.relative(base, file)))) {
         hits.push(rel(file));
         if (hits.length >= SEARCH_LIMIT) break;
       }
@@ -333,7 +376,7 @@ export function openFileContext(inputs: string[]): FileContext {
     let total = 0;
     for await (const file of walk(base)) {
       if (total >= SEARCH_LIMIT) break;
-      if (includeRe && !includeRe.test(path.relative(base, file))) continue;
+      if (includeRe && !includeRe.test(toPosix(path.relative(base, file)))) continue;
       if (BINARY_EXTS.has(path.extname(file).toLowerCase())) continue;
       let stat: fs.Stats;
       try {
@@ -390,9 +433,13 @@ export function openFileContext(inputs: string[]): FileContext {
     return new Promise((resolve) => {
       let child: ReturnType<typeof spawn>;
       try {
-        // `detached` makes the shell a process-group leader so the timeout can
-        // group-kill it AND all its children (pipelines, python3, &-jobs).
-        child = spawn("/bin/sh", ["-c", command], { cwd: runCwd, env, detached: true });
+        // `shell: true` runs the command through the host shell (cmd.exe on
+        // Windows, /bin/sh on POSIX) and lets Node handle the invocation +
+        // per-platform quote escaping — far more robust than hand-building cmd.exe
+        // args. POSIX: `detached` makes the shell a process-group leader so the
+        // timeout can group-kill it AND its children (pipelines, python3, &-jobs);
+        // Windows uses taskkill /T in kill() to take down the whole tree instead.
+        child = spawn(command, { cwd: runCwd, env, shell: true, detached: !isWindows });
       } catch (e) {
         resolve(`Failed to start the command: ${e instanceof Error ? e.message : String(e)}`);
         return;
@@ -403,10 +450,22 @@ export function openFileContext(inputs: string[]): FileContext {
       let errTrunc = false;
       let timedOut = false;
       const kill = () => {
-        try {
-          if (child.pid) process.kill(-child.pid, "SIGKILL"); // negative pid → whole group
-        } catch {
-          child.kill("SIGKILL");
+        const pid = child.pid;
+        if (isWindows) {
+          // taskkill /T walks and kills the child's whole process tree by pid.
+          try {
+            if (pid) spawn("taskkill", ["/pid", String(pid), "/T", "/F"]);
+            else child.kill();
+          } catch {
+            child.kill();
+          }
+        } else {
+          try {
+            if (pid) process.kill(-pid, "SIGKILL"); // negative pid → whole group
+            else child.kill("SIGKILL");
+          } catch {
+            child.kill("SIGKILL");
+          }
         }
       };
       const timer = setTimeout(() => {
