@@ -36,15 +36,19 @@ const entries = fs.readdirSync(ctx.root);
 ok(entries.length === 2, `workspace exposes both roots (${entries.join(", ")})`);
 const aName = entries.find((n) => fs.existsSync(path.join(ctx.root, n, "data.csv"))) ?? entries[0];
 
-// Diagnostics: how each workspace link presents + whether its realpath matches the
-// source root (the containment check compares these — a mismatch silently drops it).
-console.log(`[diag] platform=${process.platform} root=${ctx.root}`);
-for (const e of fs.readdirSync(ctx.root, { withFileTypes: true })) {
-  let rp = "?";
-  try { rp = fs.realpathSync(path.join(ctx.root, e.name)); } catch (err) { rp = "ERR:" + err.code; }
-  console.log(`[diag]   ${e.name}: symlink=${e.isSymbolicLink()} dir=${e.isDirectory()} realpath=${rp}`);
+// Diagnostics (FC_DIAG=1): how each workspace link presents + whether its realpath
+// matches the source root — the containment check compares these, and a mismatch
+// (Windows short/long-name realpath variance) silently drops the link. Kept gated
+// so a future cross-platform failure has the path reality in the log on demand.
+if (process.env.FC_DIAG) {
+  console.log(`[diag] platform=${process.platform} root=${ctx.root}`);
+  for (const e of fs.readdirSync(ctx.root, { withFileTypes: true })) {
+    let rp = "?";
+    try { rp = fs.realpathSync(path.join(ctx.root, e.name)); } catch (err) { rp = "ERR:" + err.code; }
+    console.log(`[diag]   ${e.name}: symlink=${e.isSymbolicLink()} dir=${e.isDirectory()} realpath=${rp}`);
+  }
+  console.log(`[diag] source realpaths a=${fs.realpathSync(a)} b=${fs.realpathSync(b)}`);
 }
-console.log(`[diag] source realpaths a=${fs.realpathSync(a)} b=${fs.realpathSync(b)}`);
 
 const globOut = await ctx.glob("**/*.csv");
 ok(/data\.csv/.test(globOut), `glob **/*.csv finds data.csv (forward-slash match)`);
